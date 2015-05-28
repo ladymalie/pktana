@@ -1,0 +1,202 @@
+﻿<html>
+<head>
+    <script src="/js/jquery-1.11.3.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/datatables-1.10.7.min.js"></script>
+    <script src="/js/jquery-ui-1.10.4.min.js"></script>
+    <script src="/js/colreorder-1.1.3.min.js"></script>
+    <script src="/js/scroller-1.2.2.min.js"></script>
+    <script src="//cdn.datatables.net/plug-ins/1.10.7/api/fnProcessingIndicator.js"></script>
+    <script src="//cdn.datatables.net/plug-ins/1.10.7/sorting/ip-address.js"></script>
+    <link rel="stylesheet" type="text/css" href="//cdn.datatables.net/1.10.7/css/jquery.dataTables.css">
+    <link rel="stylesheet" type="text/css" href="//cdn.datatables.net/colreorder/1.1.3/css/dataTables.colReorder.css">
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+    <script src="//cdn.datatables.net/responsive/1.0.6/js/dataTables.responsive.js"></script>
+    
+    <style>
+        .ui-progressbar {
+            position: relative;
+        }
+
+        .progress-label {
+            position: absolute;
+            left: 50%;
+            top: 4px;
+            font-weight: bold;
+            text-shadow: 1px 1px 0 #fff;
+        }
+    </style>
+
+    <script>
+        $(function () {
+            var fileSize = 0;
+            var columns = [{ "title": "No", "width": "10%", "orderable": "true" },
+                                { "title": "Timestamp", "width": "40%", "orderable": "true" },
+                                { "title": "Source", "width": "25%", "type": "ip-address", "orderable": "true" },
+                                { "title": "Destination", "width": "25%", "type": "ip-address", "orderable": "true" }];
+            $('#packetTable').dataTable({
+                "retrieve": true,
+                "ordering": true,
+                "dom": 'RrtS',
+                "cellspacing": 0,
+                "scrollY": "660px",
+                "processing": true,
+                "columns": columns,
+                "deferRender": true,
+                "paging": true,
+                "searching": false,
+                "stateSave": false,
+            });
+
+            dataTable = $('#packetTable').dataTable();
+            $('#packetTable tbody').on('click', 'tr', function () {
+                if ($(this).hasClass('selected')) {
+                    $(this).removeClass('selected');
+                }
+                else {
+                    dataTable.$('tr.selected').removeClass('selected');
+                    $(this).addClass('selected');
+                    socket.emit('selected', dataTable.api().row('.selected').index());
+                }
+            });
+            $("#progressbar").progressbar({
+                max : fileSize,
+                value: 0
+            });
+
+            $('#txtFilter').keyup(function (e) {
+                console.log('test' + $('#txtFilter').attr('id'));
+                filter($('#txtFilter').attr('id'), this.value);
+            });
+
+            $('#btnFilter').click(function () {
+                var txtBox = $('#txtFilter');
+                console.log(txtBox.val());
+                socket.emit('filter', txtBox.val());
+            });
+
+            $('#btnLoad').click(function () {
+                var filename = '';
+                $("#fileList option:selected").each(function () {
+                    filename += $(this).text() + "";
+                });
+                $('#fileList').prop('disabled', true);
+                dataTable.api().clear().draw();
+                socket.emit('start', filename);
+            });
+
+            var filter = $.fn.dataTable.util.throttle(
+                function (id, filter) {
+                    socket.emit('validate', id, filter);
+                },
+                500
+            );
+
+            $('#fileList').change(function () {
+                
+            });
+        });
+
+        var counter = 0;
+        var list = [];
+        var socket = io.connect('http://172.24.47.47:8001/',{transports : ["websocket"]});
+        var dataTable;
+        var dateNow;
+
+        socket.on('connect', function () {
+            $('#incomingChatMessages').append($('<li>Connected</li>'));
+            socket.emit('getFiles');
+
+        });
+
+        socket.on('files', function (files) {
+            var fList = $('#fileList');
+            fList.empty();
+            var fileIndex = 0;
+            $.each(files, function (index, fileName) {
+                fList.append(
+                    $('<option></option>').val(index).html(fileName)
+                );
+            });
+        });
+
+        //socket.on('filesize', function (size) {
+        //    fileSize = size;
+        //    $('#progressbar').progressbar('option', 'max', size);
+        //});
+
+        socket.on('packet', function (packetLength) {
+            counter++;
+            if (!dateNow) {
+                dateNow = Date.now();
+                dataTable.fnProcessingIndicator();
+            }
+
+            //var progress = $.fn.dataTable.util.throttle(
+            //    function () {
+            //        $('#progress').text(packetLength + ' / ' + fileSize);
+            //    },
+            //    500
+            //);
+
+            progress();
+        });
+
+        socket.on('complete', function (data) {
+            $('#fileList').prop('disabled', false);
+            console.log(((Date.now() - dateNow) / 1000) + " sec");
+            dataTable.api().rows.add(data).draw();
+            dataTable.fnProcessingIndicator(false);
+
+            dateNow = undefined;
+        });
+
+        socket.on('disconnect', function () {
+            $('#incomingChatMessages').append('<li>Disconnected</li>');
+            dataTable.api().clear().draw();
+            counter = 0;
+            console.log($('#packetTable tr').length);
+        });
+
+        socket.on('validated', function (value) {
+            var filterBox = $('#txtFilter');
+            if (value) {
+                if (filterBox.val().length > 0) {
+                    filterBox.css('background-color', '#BDEEBD');
+                } else {
+                    filterBox.css('background-color', '#FFFFFF');
+                }
+            } else {
+                filterBox.css('background-color', '#EEBDBD');
+            }
+        });
+
+        socket.on('filtered', function (filteredList) {
+            dataTable.api().clear().draw();
+            dataTable.api().rows.add(filteredList).draw();
+            dataTable.fnProcessingIndicator(false);
+        });
+
+        socket.on('errorList', function (list) {
+            $('#fileList').prop('disabled', false);
+            console.log(list);
+            
+        });
+
+    </script>
+</head>
+<body>
+    Status: <ul id="incomingChatMessages"></ul>
+    Progress: <label id="progress">0</label>
+    
+    <!--<div id="progressbar"><div class="progress-label">Loading...</div></div>-->
+    
+    <div style="width:60%; margin-left:auto; margin-right:auto">
+        <select id="fileList"></select><input id="btnLoad" type="submit" value="Load"/>
+        <input id="txtFilter" type="text" style="width:50%" />
+        <input id="btnFilter" type="submit" />
+        <table class="cell-border" id='packetTable'></table>
+    </div>
+
+</body>
+</html>
