@@ -136,13 +136,15 @@ Server.prototype.start = function (app) {
                     socketIO.sockets.emit('complete', packetList);
                     self.logs.info('Total: ' + sum + 'bytes');
 
-                    fs.writeFile(PCAP_DIR + '赤さたな文字カナ.txt', '赤さたな文字カナ testing', {encoding: 'utf8'}, function (err) {
+                    fs.writeFile(PCAP_DIR + '赤さたな文字カナ.txt', '赤さたな文字カナ testing', {encoding: "utf8"}, function (err) {
                         if (err) {
                             console.log(err);
                         } else {
                             console.log('Success');
                         }
                     });
+
+                    self.logs.info('Saving file: ' + '赤さたな文字カナ.txt');
                 });
 
             } catch (err) {
@@ -156,10 +158,53 @@ Server.prototype.start = function (app) {
             self.logs.info('Client ' + socket.id + ' has disconnected.');
         });
 
-        socket.on('selected', function(index) {
-            self.logs.info('Selected index: ' + index);
-            self.logs.info('Decoded Packet: ' + util.inspect(decodedPacketList[index]));
+        socket.on('selected', function (tabIndex, packetIndex) {
+            if (0 == tabIndex) {
+                hexadecimalFormat(packetIndex);
+            } else {
+                readableFormat(packetIndex);
+            }
         });
+
+        function hexadecimalFormat(packetIndex) {
+            var currPacket = rawPacketList[packetIndex].buf;
+
+            self.logs.info('Hex Format: ' + util.inspect(rawPacketList[packetIndex].buf.toString('ascii')));
+            self.logs.info('Buffer Length: ' + currPacket.length);
+            
+        }
+
+        function readableFormat(packetIndex) {
+            var currPacket = decodedPacketList[packetIndex];
+            var dataLinkLayer = currPacket.payload;
+            var networkLayer = currPacket.payload.payload;
+            var transportLayer = currPacket.payload.payload.payload;
+            self.logs.info('Readable Format: ' + util.inspect(currPacket));
+
+            var formattedString = '';
+
+            if (dataLinkLayer) {
+                if (dataLinkLayer.dhost && dataLinkLayer.shost) {
+                    formattedString += 'src:\t[' + dataLinkLayer.shost.toString('ascii') + '], ';
+                    formattedString += 'dst:\t[' + dataLinkLayer.dhost.toString('ascii') + ']<br>';
+                }
+            }
+            if (networkLayer) {
+                if (networkLayer.saddr && networkLayer.saddr.o1) {
+                    formattedString += 'IPv4, src: [' + networkLayer.saddr.toString('ascii') + '], ';
+                    formattedString += 'dst: [' + networkLayer.daddr.toString('ascii') + ']<br>';
+                }
+            }
+            if (transportLayer) {
+                if (transportLayer.sport && transportLayer.dport) {
+                    formattedString += 'Protocol: ['+ 'unknown' + '], ';
+                    formattedString += 'src port: [' + transportLayer.sport + '], ';
+                    formattedString += 'dst port: [' + transportLayer.dport + ']';
+                }
+            }
+            self.logs.info(formattedString);
+            socketIO.sockets.emit('decoded', formattedString)
+        }
 
         function handleFile(filename) {
             var valid = true;
@@ -182,6 +227,7 @@ Server.prototype.start = function (app) {
         function handleError(errCode, message) {
             var err = {};
             err[errCode] = message;
+            errorList = [];
             errorList.push(err);
             socketIO.sockets.emit('errorList', errorList);
         }

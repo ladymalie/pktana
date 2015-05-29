@@ -200,18 +200,21 @@ FilterValidation.prototype.compileFilter = function (str) {
         var validLog = ['||', '&&'];
         var validVar = ['src.ip', 'dst.ip', 'src.port', 'dst.port', 'http', 'msg', 'protocol'];
         var validPar = ['(', ')'];
+        var not = ['!'];
 
         for (var i = 0; i < strArray.length; i++) {
             var skipLog = false,
                 skipVar = false,
                 skipVal = false,
                 skipPar = false;
-            
+
             if (validOpe.indexOf(strArray[i]) !== -1) {
                 _typeList.push('ope');
+            } else if (not.indexOf(strArray[i]) !== -1) {
+                _typeList.push('not');
             } else if (validLog.indexOf(strArray[i]) !== -1) {
                 _typeList.push('log');
-            } else  if (validVar.indexOf(strArray[i]) !== -1) {
+            } else if (validVar.indexOf(strArray[i]) !== -1) {
                 _typeList.push('var');
             } else if (validPar.indexOf(strArray[i]) !== -1) {
                 if (strArray[i] === '(') {
@@ -345,6 +348,35 @@ FilterValidation.prototype.compileFilter = function (str) {
                         state = 'falseEnd';
                     }
                     break;
+                case ('not'):
+                    state = currentDataType;
+
+                    if (state == 'oPar') {
+                        state = 'oPar';
+                        parOpen = true;
+                        parStack.push(_stack[traversal]);
+                    } else if (state == 'var') {
+                        state = 'notVar';
+                    } else {
+                        state = 'falseEnd';
+                    }
+                    break;
+                case ('notVar'): {
+                    state = currentDataType;
+                    if (state == 'cPar') {
+                        if (parStack.length == 0) {
+                            correctness = false;
+                            return correctness;
+                        }
+                        state = 'end';
+                        parStack.pop();
+                    } else if (state == 'log') {
+                        state = 'start';
+                        pairVal = pairOpe = pairVar = '';
+                    } else {
+                        state = 'falseEnd';
+                    }
+                }
                 case ('falseEnd'):
                     break;
             }
@@ -372,7 +404,6 @@ FilterValidation.prototype.compileFilter = function (str) {
             if (!currentDataType) {
                 break;
             }
-
         }
 
         if (1 == _typeList.length) {
@@ -382,7 +413,7 @@ FilterValidation.prototype.compileFilter = function (str) {
         } else if (0 != parStack.length) {
             correctness = false;
         } else {
-            correctness = ('var' === state || 'end' === state);
+            correctness = ('notVar' === state || 'var' === state || 'end' === state);
         }
 
         /**
@@ -445,13 +476,19 @@ FilterValidation.prototype.applyFilter = function (packets) {
             if (!isOperationOrLog(postFix[index])) {
                 stack.push(postFix[index]);
             } else {
-                var value = stack.pop();
-                var variable = stack.pop();
+                var value = '';
+                var variable = '';
                 var operation = postFix[index];
                 if ('&&' === operation) {
+                    value = stack.pop();
+                    variable = stack.pop();
                     stack.push(value && variable);
                 } else if ('||' === operation) {
+                    value = stack.pop();
+                    variable = stack.pop();
                     stack.push(value || variable);
+                } else if ('!' === operation) {
+                    stack.push(stack.pop());
                 } else {
                     if (!isVariable(variable)) {
                         var tempVar = variable;
@@ -480,7 +517,7 @@ FilterValidation.prototype.applyFilter = function (packets) {
     * @return {array} The postfix notation as an array.
     */
     function convertToPostFix() {
-        var precedence = { '==': 2, '!=': 2, '~=': 2, '<=': 2, '>=': 2, '<': 2, '>': 2, '&&': 1, '||': 0 };
+        var precedence = { '!': 3, '==': 2, '!=': 2, '~=': 2, '<=': 2, '>=': 2, '<': 2, '>': 2, '&&': 1, '||': 0 };
 
         var result = [];
         var operatorStack = [];
@@ -489,11 +526,10 @@ FilterValidation.prototype.applyFilter = function (packets) {
             var item = _stack[index];
             if ('var' === itemType || 'val' === itemType) {
                 result.push(item);
-            } else if ('log' === itemType || 'ope' === itemType) {
+            } else if ('log' === itemType || 'ope' === itemType || 'not' === itemType) {
                 var o1 = item;
 
                 var o2 = operatorStack.peek();
-
                 while (isOperationOrLog(o2) && precedence[o1] <= precedence[o2]) {
                     result.push(operatorStack.pop());
                     o2 = operatorStack.peek();
@@ -528,7 +564,7 @@ FilterValidation.prototype.applyFilter = function (packets) {
     }
 
     function isOperationOrLog(token) {
-        var opeList = ['==', '!=', '~=', '<=', '>=', '<', '>', '&&', '||'];
+        var opeList = ['==', '!=', '~=', '<=', '>=', '<', '>', '&&', '||', '!'];
 
         return (opeList.indexOf(token) != -1)
     }
