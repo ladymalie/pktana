@@ -1,0 +1,7 @@
+{
+    "pcap_dir": "../pcapDir",
+    "logs": { },
+    "filters": [ ],
+    "color-rule": { },
+    "protocol-rule": { }
+}

@@ -50,28 +50,15 @@
 
             dataTable = $('#packetTable').dataTable();
             $('#packetTable tbody').on('click', 'tr', function () {
-                if ($(this).hasClass('selected')) {
-                    $(this).removeClass('selected');
-                }
-                else {
-                    dataTable.$('tr.selected').removeClass('selected');
-                    $(this).addClass('selected');
-                    socket.emit('selected', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index());
-                }
-            });
-            $("#progressbar").progressbar({
-                max : fileSize,
-                value: 0
-            });
-
-            $('#txtFilter').keyup(function (e) {
-                filter($('#txtFilter').attr('id'), this.value);
+                dataTable.$('tr.selected').removeClass('selected');
+                $(this).addClass('selected');
+                socket.emit('selected', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index());
             });
 
             $('#btnFilter').click(function () {
                 var txtBox = $('#txtFilter');
-                console.log(txtBox.val());
                 socket.emit('filter', txtBox.val());
+                
             });
 
             $('#btnLoad').click(function () {
@@ -79,23 +66,32 @@
                 $("#fileList option:selected").each(function () {
                     filename += $(this).text() + "";
                 });
-                $('#fileList').prop('disabled', true);
                 dataTable.api().clear().draw();
                 socket.emit('start', filename);
             });
-
-            var filter = $.fn.dataTable.util.throttle(
-                function (id, filter) {
-                    socket.emit('validate', id, filter);
-                },
-                500
-            );
+            
+            $('#btnSave').click(function () {
+            	var filename = '';
+            	$("#fileList option:selected").each(function () {
+                    filename += $(this).text() + "";
+                });
+            	
+            	socket.emit('save', filename, $('#txtFilter').val());
+            });
 
             $('#fileList').change(function () {
                 
             });
             
-            $( "#tabs" ).tabs();
+            $( "#tabs" ).tabs({
+            	activate : function (event, ui) {
+            		if (ui.newTab.index() == 1) {
+            			if (dataTable.api().row('.selected').index()) {
+            				socket.emit('selected', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index());
+            			}
+            		}
+            	}
+            });
         });
 
         var counter = 0;
@@ -121,31 +117,15 @@
             });
         });
 
-        //socket.on('filesize', function (size) {
-        //    fileSize = size;
-        //    $('#progressbar').progressbar('option', 'max', size);
-        //});
-
         socket.on('packet', function (packetLength) {
             counter++;
             if (!dateNow) {
                 dateNow = Date.now();
                 dataTable.fnProcessingIndicator();
             }
-
-            //var progress = $.fn.dataTable.util.throttle(
-            //    function () {
-            //        $('#progress').text(packetLength + ' / ' + fileSize);
-            //    },
-            //    500
-            //);
-
-            progress();
         });
 
         socket.on('complete', function (data) {
-            $('#fileList').prop('disabled', false);
-            console.log(((Date.now() - dateNow) / 1000) + " sec");
             dataTable.api().rows.add(data).draw();
             dataTable.fnProcessingIndicator(false);
 
@@ -156,7 +136,6 @@
             $('#incomingChatMessages').append('<li>Disconnected</li>');
             dataTable.api().clear().draw();
             counter = 0;
-            console.log($('#packetTable tr').length);
         });
 
         socket.on('validated', function (value) {
@@ -179,14 +158,11 @@
         });
         
         socket.on('decoded', function (decodedString) {
-        	console.log(decodedString);
         	$('#lblReadable').html(decodedString.replace('\r\n', '<br>'));
         });
 
         socket.on('errorList', function (list) {
-            $('#fileList').prop('disabled', false);
             console.log(list);
-            
         });
 
     </script>
@@ -215,6 +191,8 @@
 		    <p id="lblReadable"></p>
 		  </div>
 		</div>
+		
+		<input id="btnSave" type="submit" />
     </div>
 
 </body>

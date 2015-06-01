@@ -8,6 +8,7 @@ var express = require('express');
 var Router = require('./route');
 var Server = require('./server');
 
+log4js.configure(__dirname + '/config/log4js-config.json');
 app = express();
 
 

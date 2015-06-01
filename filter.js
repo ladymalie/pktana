@@ -468,7 +468,6 @@ FilterValidation.prototype.applyFilter = function (packets) {
 
     //Store the starting indexes of each segment divided by a logical operator.
     var postFix = convertToPostFix();
-
     var filtered = packets;
     filtered = packets.filter(function (packet) {
         var stack = [];
@@ -488,8 +487,10 @@ FilterValidation.prototype.applyFilter = function (packets) {
                     variable = stack.pop();
                     stack.push(value || variable);
                 } else if ('!' === operation) {
-                    stack.push(stack.pop());
+                    stack.push(!stack.pop());
                 } else {
+                    value = stack.pop();
+                    variable = stack.pop();
                     if (!isVariable(variable)) {
                         var tempVar = variable;
                         variable = value;
@@ -499,8 +500,7 @@ FilterValidation.prototype.applyFilter = function (packets) {
                 }
             }
         }
-
-        if (stack.length < 1) {
+        if (stack.length > 1) {
             return;
         }
 
