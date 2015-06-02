@@ -1,0 +1,54 @@
+﻿<html>
+    <head>
+        <title>Packet Analysis</title>
+
+        <script src="/js/jquery-1.11.3.min.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+
+            $(function () {
+                //initialize jquery objects here.
+                $('#btnError').on('click', function () {
+                    socket.emit('_sampleEvent', 'button click error', resolveError);
+                });
+            });
+
+            var socket = io.connect('http://localhost:8001/',{transports : ["websocket"]});
+
+            socket.on('connect', function () {
+
+            });
+
+            socket.on('disconnect', function () {
+
+            });
+
+            socket.on('error', function (err) {
+
+            });
+
+            socket.on('_pcap-error', function (err) {
+                //display error label
+                //set err.number and err.message
+            });
+
+            socket.on('_clientEvent', function (data) {
+
+            });
+
+            function resolveError(jsonErrorList) {
+                console.log(jsonErrorList["errList"]);
+                //get jsonErrorList["errList"]
+                //if jsonErrorList["errList"] is empty
+                //set lblError to invisible
+                //else, set lblError to visible and set jsonErrorList["errList"] to lblError
+                //with each error on a different line.
+            }
+
+        </script>
+    </head>
+    <body>
+        <label id="lblError" style="width:50%" />
+        <input id="btnError" type="button" />
+    </body>
+</html>

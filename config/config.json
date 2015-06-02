@@ -1,0 +1,7 @@
+{
+    "pcap_dir": "../pcapDir",
+    "filters": [ ],
+    "color-rule": { },
+    "protocol-rule": { },
+    "hostnames": { }
+}
