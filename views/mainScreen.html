@@ -32,6 +32,7 @@
 
         .dataTables_empty{
              background-color: gainsboro !important
+
         }
 
 
@@ -42,14 +43,14 @@
             var columnOrder =['counter','srcIP','dstIP','timestamp','Protocol','message','info'];
             console.log(columnOrder);
             var fileSize = 0;
-            var columns = [{ "title": "No", "width": "5%", "orderable": "true" },
-                                { "title": "Timestamp", "width": "15%", "orderable": "true" },
-                                { "title": "Source", "width": "10%", "type": "ip-address", "orderable": "true" },
-                                { "title": "Destination", "width": "10%", "type": "ip-address", "orderable": "true" },
-                                { "title": "Protocol", "width": "8%",  "orderable": "true" },
-                                { "title": "Length", "width": "7%", "orderable": "true" },
-                                { "title": "Information", "width": "25%", "orderable": "true" },
-                                { "title": "Message", "width": "20%", "orderable": "true" }];
+            var columns = [{ "title": "No", "width": "3%", "orderable": "true" , "data" : "0"},
+                                { "title": "Timestamp", "width": "15%", "orderable": "true" ,"data" : "1" },
+                                { "title": "Source", "width": "10%", "type": "ip-address", "orderable": "true" ,"data" : "2"},
+                                { "title": "Destination", "width": "10%", "type": "ip-address", "orderable": "true" ,"data" : "3"},
+                                { "title": "Protocol", "width": "5%",  "orderable": "true" ,"data" : "4"},
+                                { "title": "Length", "width": "4%", "orderable": "true" ,"data" : "5"},
+                                { "title": "Information", "width": "33%", "orderable": "true" ,"data" : "6"},
+                                { "title": "Message", "width": "20%", "orderable": "true","data" : "7" }];
             $('#tblPackets').dataTable({
                 "retrieve": true,
                 "ordering": true,
@@ -58,7 +59,7 @@
                 "Info": false,
                 "cellspacing": 0,
                 "AutoWidth": false,
-                "scrollY": "75%",
+                "scrollY": "510px",
                 "processing": true,
                 "columns": columns,
                 "deferRender": true,
@@ -81,47 +82,16 @@
                     {
                         $('td', nRow).css('background-color', '#90ee90  ');
                     }
-                },
-                "oColReorder": {
-                            "fnReorderCallback": function () {
-                                alert('Columns reordered');
-                            }
                 }
-                // ,
-
-                // "aoColumnDefs": [
-                //     { "mDataProp": "No", "aTargets": [ 0 ] },
-                //     { "mDataProp": "Timestamp", "aTargets": [ 1 ] },
-                //     { "mDataProp": "Source", "aTargets": [ 2 ] },
-                //     { "mDataProp": "Destination", "aTargets": [ 3 ] },
-                //     { "mDataProp": "Protocol", "aTargets": [ 4 ] },
-                //     { "mDataProp": "Length", "aTargets": [ 5 ] },
-                //     { "mDataProp": "Information", "aTargets": [ 6 ]},
-                //     { "mDataProp": "Message", "aTargets": [ 7 ]  }
-                // ]                // ,
-                // "fnPreDrawCallback": function() {
-                //     // gather info to compose a message
-                //     showDialog();
-                //     return true;
-                // },
-                // "fnDrawCallback": function() {
-                //     // in case your overlay needs to be put away automatically you can put it here
-                //     hideOverlay();
-                // }
             });
 
             dataTable = $('#tblPackets').dataTable();
 
             // dataTable.set('strings.emptyMessage', "Yas!");
             $('#tblPackets tbody').on('click', 'tr', function () {
-                if ($(this).hasClass('selected')) {
-                    $(this).removeClass('selected');
-                }
-                else {
-                    dataTable.$('tr.selected').removeClass('selected');
-                    $(this).addClass('selected');
-                    socket.emit('selected', dataTable.api().row('.selected').index());
-                }
+                dataTable.$('tr.selected').removeClass('selected');
+                $(this).addClass('selected');
+                socket.emit('_getDecodedPacket', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index(), resolveError);
             });
 
 
@@ -130,22 +100,25 @@
                 value: 0
             });
 
-            $('#txtFilter').keyup(function (e) {
-                console.log('test' + $('#txtFilter').attr('id'));
-                filter($('#txtFilter').attr('id'), this.value);
-            });
+            // $('#txtFilter').keyup(function (e) {
+            //     console.log('test' + $('#txtFilter').attr('id'));
+            //     filter($('#txtFilter').attr('id'), this.value);
+            // });
 
             $('#btnApplyFilter').click(function () {
                 var txtBox = $('#txtFilter');
                 console.log(txtBox.val());
                 //Check if there was a file selected 
-                if(0 < dataTable.fnGetData().length){
-                    socket.emit('filter', txtBox.val());
-                }
-                else{
-                    $('#lblError').text('No data can be filtered.');
-                }
+                // if(0 < dataTable.fnGetData().length){
+                    socket.emit('filter', txtBox.val(),resolveError);
+                // }
+                // else{
+                //     $('#lblError').text('No data can be filtered.');
+                // }
+            });
 
+            $('#btnSave').click(function() {
+                
             });
 
             $('#btnLoad').click(function () {
@@ -155,7 +128,7 @@
                 });
                 $('#cmbFilename').prop('disabled', true);
                 dataTable.api().clear().draw();
-                socket.emit('start', filename,columnOrder);
+                socket.emit('_start', filename, resolveError);
             });
 
             var filter = $.fn.dataTable.util.throttle(
@@ -166,21 +139,24 @@
             );
 
             $('#cmbFilename').change(function () {
-                 switch ($("#cmbFilename" ).val()) {
-                        case '0':
-                            $('#btnSave').attr('disabled','disabled');
-                            $('#txtFilter').attr('disabled','disabled');
-                            $('#btnApplyFilter').attr('disabled','disabled');
-                             $('#txtFilter').text('');
-                            break;
-                        default :
-                            $('#btnSave').removeAttr('disabled');
-                            $('#txtFilter').removeAttr('disabled');
-                            $('#btnApplyFilter').removeAttr('disabled');
-                 }
+                 checkDataTable();
             });
         });
+        
 
+        function checkDataTable(){
+            if( 0 >= dataTable.fnSettings().aoData.length){
+                                $('#btnSave').attr('disabled','disabled');
+                                $('#txtFilter').attr('disabled','disabled');
+                                $('#btnApplyFilter').attr('disabled','disabled');
+                                $('#txtFilter').text('');
+            }
+            else{
+                $('#btnSave').removeAttr('disabled');
+                $('#txtFilter').removeAttr('disabled');
+                $('#btnApplyFilter').removeAttr('disabled');
+            }
+        }
         var counter = 0;
         var list = [];
         var socket = io.connect('http://192.168.1.245:8001/',{transports : ["websocket"]});
@@ -189,11 +165,31 @@
 
         socket.on('connect', function () {
             $('#incomingChatMessages').append($('<li>Connected</li>'));
-            socket.emit('getFiles');
+            socket.emit('_getFileList', resolveError);
 
         });
 
-        socket.on('files', function (files) {
+        socket.on('disconnect', function () {
+            $('#incomingChatMessages').append('<li>Disconnected</li>');
+            dataTable.api().clear().draw();
+            counter = 0;
+            console.log($('#tblPackets tr').length);
+        });
+
+        socket.on('error', function(err) {
+
+        });
+
+        socket.on('_pcap-error', function(err) {
+            
+        });
+
+        socket.on('_displayDecodedPacket', function (decoded_packet) {
+            $('#lblAscii').html(decoded_packet.replace('\r\n', '<br>'));
+        });
+
+        socket.on('_showFileList', function (files) {
+        	console.log('here');
             var fList = $('#cmbFilename');
             fList.empty();
             var fileIndex = 0;
@@ -219,23 +215,18 @@
         });
 
         socket.on('complete', function (data) {
-            $('#cmbFilename').prop('disabled', false);
             console.log(((Date.now() - dateNow) / 1000) + " sec");
             dataTable.api().rows.add(data).draw();
             dataTable.fnProcessingIndicator(false);
 
             dateNow = undefined;
-        });
 
-        socket.on('disconnect', function () {
-            $('#incomingChatMessages').append('<li>Disconnected</li>');
-            dataTable.api().clear().draw();
-            counter = 0;
-            console.log($('#tblPackets tr').length);
+            checkDataTable();
         });
 
         socket.on('validated', function (value) {
             var filterBox = $('#txtFilter');
+            console.log('validated return '+ value);
             if (value) {
                 if (filterBox.val().length > 0) {
                     filterBox.css('background-color', '#BDEEBD');
@@ -253,61 +244,67 @@
             dataTable.fnProcessingIndicator(false);
         });
 
-        socket.on('errorList', function (list) {
-            $('#cmbFilename').prop('disabled', false);
-            
-            if(undefined== list[0].errCode){
+
+        function resolveError(jsonErrorList) {            $('#cmbFilename').removeAttr('disabled');
+            console.log('errorList: ' + jsonErrorList.errList);
+            console.log('success: ' + jsonErrorList.success);
+            //get jsonErrorList["errList"]
+            if (jsonErrorList["errList"].length == 0) {
+                if (jsonErrorList["success"].length == 0 ) {
+                    $('#lblError').text('');
+                } else { 
+                    //display jsonErrorList["success"];
+                    $('#lblError').text(jsonErrorList['success']);
+                }
+            } else {
+                //  set lblError to visible and set jsonErrorList["errList"] to lblError
+                //  with each error on a different line.
+                var eList = jsonErrorList['errList'];
                 $('#lblError').text('');
-            }
-            else{
-             $('#lblError').text(list[0].errMessage);
-                switch(list[0].errCode) {
-                      case'ERR001' : 
-                            socket.emit('getFiles');
-                            break;
-                    default:
-                            break;
+                for (var error in eList) {
+                    $('#lblError').text(eList[error]['errID'] + ': ' + eList[error]['errMsg']);
                 }
             }
-            console.log(list);
+            checkDataTable();
+        }
+
+    	function showDialog() {
+            $("#dialog-modal").dialog(
+            {
+                width: 450,
+                height: 200,
+                modal: true
+             });
+        }
+
+        function hideOverlay() {
+             $("#dialog-modal").dialog( "close" );
+        }
+        function savePacket() {
+        	var filename = '';
+            filename = $('#txtSaveFile').val();
+
+            socket.emit('_saveFile', filename, $('#txtFilter').val(), resolveError);
+             $("#dialog-modal").dialog( "close" );
+        }
+
+
+        function cancelPacket() {
+             $("#dialog-modal").dialog( "close" );
+        }
+
+        $(function() {
+            $( "#tabs" ).tabs();
         });
-	function showDialog()
-    {
-        $("#dialog-modal").dialog(
-        {
-            width: 450,
-            height: 200,
-            modal: true
-         });
-    }
 
-    function hideOverlay(){
-         $("#dialog-modal").dialog( "close" );
-    }
-    function savePacket()
-    {
-         $("#dialog-modal").dialog( "close" );
-    }
-
-
-    function cancelPacket()
-    {
-         $("#dialog-modal").dialog( "close" );
-    }
-
-    $(function() {
-        $( "#tabs" ).tabs();
-    });
-
-    function applyFilter()
-    {
-        $("#dialog-modal").dialog(
-        {
-            width: 450,
-            height: 200,
-            modal: true
-         });
-    }
+        function applyFilter() {
+            $("#dialog-modal").dialog(
+            {
+                width: 450,
+                height: 200,
+                modal: true
+             });
+        }
 
     </script>
 </head>
@@ -417,7 +414,7 @@
             </table>
         </div>
         <div id="tabAscii"style="overflow:scroll;height:19%;width:97%;overflow:auto;">
-              
+              <p id="lblAscii"></p>
         </div>
 
     </div>

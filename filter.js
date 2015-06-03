@@ -1,15 +1,11 @@
 module.exports = FilterValidation;
 
-
-
-
-
 function FilterValidation(logger) {
     this._stack = [];
     this._typeList = [];
 
     this._packets = [];
-   this.logs = logger;
+    this.logs = logger;
 }
 
 
@@ -23,15 +19,13 @@ Array.prototype.peek = function () {
  * @return {type} <description>
  */
 FilterValidation.prototype.compileFilter = function (str) {
-    var logs = this.logs;
     _stack = [];
     _typeList = [];
     var result = true;
-    var errData = {};
+    var logs = this.logs;
+    logs.info("sample write log file");
     if (!str && str.trim().length <= 0) {
-        errData['errCode'] = 'ERR206';
-        errData['errMessage'] = 'No filter syntax available.';
-	return errData;
+        return result;
     }
 
     var cleanStr = str.trim();
@@ -61,15 +55,13 @@ FilterValidation.prototype.compileFilter = function (str) {
         while (true) {
             switch (state) {
                 case ('start'):
-                    logs.info('start: ' + currChar + ' State : '+state);
-		    state = tokenize(currChar);
+                    state = tokenize(currChar);
                     if ('\"' === currChar) {
                         strOpen = true;
                     }
                     fString = fString.concat(currChar);
                     break;
                 case ('ope'):
-			 logs.info('ope: ' + currChar + ' State : '+state);
                     state = tokenize(currChar);
                     if (strOpen) {
                         state = 'var';
@@ -95,7 +87,6 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('var'):
-                         logs.info('var: ' + currChar + ' State : '+state);
                     state = tokenize(currChar);
                     if (strOpen) {
                         state = 'var';
@@ -121,7 +112,6 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('log'):
-                         logs.info('log: ' + currChar + ' State : '+state);
                     state = tokenize(currChar);
 
                     if (strOpen) {
@@ -148,7 +138,6 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('par'):
-                      logs.info('par: ' + currChar + ' State : '+state);
                     state = tokenize(currChar);
                     _stack.push(fString);
                     fString = currChar;
@@ -208,24 +197,26 @@ FilterValidation.prototype.compileFilter = function (str) {
      * @param strArray {Array} The array of strings to be classified.
      */
     function classify(strArray) {
-        logs.info('classify String Array : '+ strArray.toString());
-	// lookup each item in array to check if it is a predefined value and/or is valid.
+        // lookup each item in array to check if it is a predefined value and/or is valid.
         var validOpe = ['==', '!=', '>', '<', '<=', '>=', "~="];
         var validLog = ['||', '&&'];
         var validVar = ['src.ip', 'dst.ip', 'src.port', 'dst.port', 'http', 'msg', 'protocol'];
         var validPar = ['(', ')'];
+        var not = ['!'];
 
         for (var i = 0; i < strArray.length; i++) {
             var skipLog = false,
                 skipVar = false,
                 skipVal = false,
                 skipPar = false;
-            
+
             if (validOpe.indexOf(strArray[i]) !== -1) {
                 _typeList.push('ope');
+            } else if (not.indexOf(strArray[i]) !== -1) {
+                _typeList.push('not');
             } else if (validLog.indexOf(strArray[i]) !== -1) {
                 _typeList.push('log');
-            } else  if (validVar.indexOf(strArray[i]) !== -1) {
+            } else if (validVar.indexOf(strArray[i]) !== -1) {
                 _typeList.push('var');
             } else if (validPar.indexOf(strArray[i]) !== -1) {
                 if (strArray[i] === '(') {
@@ -252,17 +243,16 @@ FilterValidation.prototype.compileFilter = function (str) {
         var parOpen = false;
         var pairVal = '', pairVar = '', pairOpe = '';
         var parStack = [];
+	var prevDataType = currentDataType;
         while (true) {
-	    logs.info('checkGrammar');
             switch (state) {
                 case ('start'):
+		    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
-		    logs.info('Check Grammer State : '+ state + ' currentDataType : '+currentDataType);	
+
                     if (state == 'log' || state == 'ope' || state == 'cPar') {
-			logs.info('ERR200 problem');
                         state = 'falseEnd';
-			errData['errCode'] = 'ERR200'
-                        errData['errMessage'] = 'Invalid syntax. Filter cannot begin with an operator.'
                     } else if (state == 'val') {
                         pairVal = _stack[traversal];
                     } else if (state == 'var') {
@@ -273,32 +263,31 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('oPar'):
-                    logs.info('Check Grammer State : '+ state + ' currentDataType : '+currentDataType)    ;
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'oPar') {
                         parStack.push(_stack[traversal]);
                     } else if (state == 'log' || state == 'ope' || state == 'cPar') {
                         state = 'falseEnd';
-                        errData['errCode'] = 'ERR201'
-                        errData['errMessage'] = 'Invalid syntax. ' + state+ ' is not a valid Variable.'
-			
-			logs.info('Check Grammer State : '+ state + ' currentDataType : '+currentDataType);
                     } else if (state == 'val') {
                         pairVal = _stack[traversal];
                     } else if (state == 'var') {
                         pairVar = _stack[traversal];
-                    }
+                    } else if (prevDataType != 'varOpe' || prevDataType != 'start'){
+			state = 'falseEnd';
+			logs.info('prevDataType != varOpe || start');
+		    }
                     break;
                 case ('cPar'):
-			logs.info('Check Grammer State : '+ state + ' currentDataType : '+currentDataType);
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'cPar') {
                         if (parStack.length == 0) {
-                            correctness = false; 
-			errData['errCode'] = 'ERR208'
-                        errData['errMessage'] = 'Invalid Syntax. \'(\' clause missing.'
+                            correctness = false;
                             return correctness;
                         }
                         parStack.pop();
@@ -309,6 +298,8 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('var'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'log') {
@@ -325,6 +316,8 @@ FilterValidation.prototype.compileFilter = function (str) {
 
                     break;
                 case ('val'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'ope') {
@@ -335,19 +328,25 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('varOpe'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'val') {
                         state = 'end';
+			logs.info('inside varOpe  state '+ state);
                         pairVal = _stack[traversal];
                     } else {
                         state = 'falseEnd';
                     }
                     break;
                 case ('valOpe'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'var') {
+			logs.info('inside valOpe  state '+ state);
                         state = 'end';
                         pairVar = _stack[traversal];
                     } else {
@@ -355,63 +354,92 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('end'):
-		    logs.info('end')
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'log') {
                         state = 'start';
                         pairVal = pairOpe = pairVar = '';
+			logs.info('end state is log');
                     } else if (state == 'cPar') {
                         state = 'end';
                         if (parStack.length == 0) {
-                            correctness = false;
-                            return correctness;
+                        	logs.info('end parStack.length ==0');
+                            	correctness = false;
+                            	return correctness;
                         }
                         parStack.pop();
+                    } else {
+			logs.info('end false END');
+                        state = 'falseEnd';
+                    }
+                    break;
+                case ('not'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
+                    state = currentDataType;
+
+                    if (state == 'oPar') {
+                        state = 'oPar';
+                        parOpen = true;
+                        parStack.push(_stack[traversal]);
+                    } else if (state == 'var') {
+                        state = 'notVar';
                     } else {
                         state = 'falseEnd';
                     }
                     break;
+                case ('notVar'): {
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
+                    state = currentDataType;
+                    if (state == 'cPar') {
+                        if (parStack.length == 0) {
+                            correctness = false;
+                            return correctness;
+                        }
+                        state = 'end';
+                        parStack.pop();
+                    } else if (state == 'log') {
+                        state = 'start';
+                        pairVal = pairOpe = pairVar = '';
+                    } else {
+                        state = 'falseEnd';
+                    }
+                }
                 case ('falseEnd'):
+                    logs.info('Check Grammar State : '+ state);
                     break;
             }
             // If a variable-value pair is present, validate the value based on the
             // standard of associated variable.
             if ('end' === state) {
-		logs.info('end state')
+                    logs.info('end === state ');
                 //Prematurely stop the traversal when validation fails.
                 if (0 != pairOpe.length || 0 != pairVal.length) {
                     if (!validateValues(pairVar, pairOpe, pairVal)) {
-                        
-			correctness = false;
-                        //return correctness;
-			
-			return errData;
+			logs.info('!validateValues(pairVar, pairOpe, pairVal)');
+                        correctness = false;
+                        return correctness;
                     }
                 }
             }
 
             //Prematurely stop the traversal when an incorrect pattern is found.
             if ('falseEnd' === state) {
-		logs.info('premature stop the traversal');
+		logs.info('falseEnd === state');
                 correctness = false;
                 break;
             }
 
             traversal++;
-            var prevDataType = currentDataType;
-	    currentDataType = _typeList[traversal];
-            
+	    prevDataType = currentDataType;
+            currentDataType = _typeList[traversal];
+
             if (!currentDataType) {
-		if(traversal == 1 && prevDataType != 'var'){
-			errData['errCode'] = 'ERR20';
-                	errData['errMessage'] = 'Syntax insuficient';
-		}
-			
-		logs.info('Check Grammar Traversal : '+ traversal);
                 break;
             }
-
         }
 
         if (1 == _typeList.length) {
@@ -421,7 +449,7 @@ FilterValidation.prototype.compileFilter = function (str) {
         } else if (0 != parStack.length) {
             correctness = false;
         } else {
-            correctness = ('var' === state || 'end' === state);
+            correctness = ('notVar' === state || 'var' === state || 'end' === state);
         }
 
         /**
@@ -433,8 +461,6 @@ FilterValidation.prototype.compileFilter = function (str) {
          * @return {boolean} True if the value is a valid input for the variable.
          */
         function validateValues(variable, ope, value) {
-            logs.info('Validate Values');
-            logs.info('variable : '+variable + ' ope : '+ope + ' value : '+value);
             var result = false;
             var ipRegex = /^(?!0)(?!.*\.$)((1?\d?\d|25[0-5]|2[0-4]\d)(\.|$)){4}$/;
             var strRegex = /"(.| )+"/;
@@ -458,16 +484,14 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                 }
             }
-
+	    logs.info('returning results');
             return result;
         }
-	logs.info('almost end'+ errData.toString());	
-       // return correctness;
-       return errData;
+	logs.info('returning correctness');
+        return correctness;
     };
-  logs.info('At the endd' + errData.toString());
-    //return result;
-    return errData;
+ 	logs.info('returnning last result');
+    return result;
 };
 
 /**
@@ -477,10 +501,11 @@ FilterValidation.prototype.compileFilter = function (str) {
  */
 FilterValidation.prototype.applyFilter = function (packets) {
     var result = [];
+    logs = this.logs;
 
+    logs.info('On apply Filter');
     //Store the starting indexes of each segment divided by a logical operator.
     var postFix = convertToPostFix();
-
     var filtered = packets;
     filtered = packets.filter(function (packet) {
         var stack = [];
@@ -488,14 +513,22 @@ FilterValidation.prototype.applyFilter = function (packets) {
             if (!isOperationOrLog(postFix[index])) {
                 stack.push(postFix[index]);
             } else {
-                var value = stack.pop();
-                var variable = stack.pop();
+                var value = '';
+                var variable = '';
                 var operation = postFix[index];
                 if ('&&' === operation) {
+                    value = stack.pop();
+                    variable = stack.pop();
                     stack.push(value && variable);
                 } else if ('||' === operation) {
+                    value = stack.pop();
+                    variable = stack.pop();
                     stack.push(value || variable);
+                } else if ('!' === operation) {
+                    stack.push(!stack.pop());
                 } else {
+                    value = stack.pop();
+                    variable = stack.pop();
                     if (!isVariable(variable)) {
                         var tempVar = variable;
                         variable = value;
@@ -505,8 +538,7 @@ FilterValidation.prototype.applyFilter = function (packets) {
                 }
             }
         }
-
-        if (stack.length < 1) {
+        if (stack.length > 1) {
             return;
         }
 
@@ -518,12 +550,12 @@ FilterValidation.prototype.applyFilter = function (packets) {
     * to arrange the array based on the precedence of the operations and groupings.
     * Parentheses are considered but is not included in the output.
     * (e.g.) ((msg~="websocket" && src.ip > 192.168.1.1) || http) || dst.port
-    * ¨ [msg, websocket, ~=, src.ip, 192.168.1.1, >, &&, http, ||, dst.port, ||]
+    * ?N [msg, websocket, ~=, src.ip, 192.168.1.1, >, &&, http, ||, dst.port, ||]
     * @method convertToPostfix
     * @return {array} The postfix notation as an array.
     */
     function convertToPostFix() {
-        var precedence = { '==': 2, '!=': 2, '~=': 2, '<=': 2, '>=': 2, '<': 2, '>': 2, '&&': 1, '||': 0 };
+        var precedence = { '!': 3, '==': 2, '!=': 2, '~=': 2, '<=': 2, '>=': 2, '<': 2, '>': 2, '&&': 1, '||': 0 };
 
         var result = [];
         var operatorStack = [];
@@ -532,11 +564,10 @@ FilterValidation.prototype.applyFilter = function (packets) {
             var item = _stack[index];
             if ('var' === itemType || 'val' === itemType) {
                 result.push(item);
-            } else if ('log' === itemType || 'ope' === itemType) {
+            } else if ('log' === itemType || 'ope' === itemType || 'not' === itemType) {
                 var o1 = item;
 
                 var o2 = operatorStack.peek();
-
                 while (isOperationOrLog(o2) && precedence[o1] <= precedence[o2]) {
                     result.push(operatorStack.pop());
                     o2 = operatorStack.peek();
@@ -571,7 +602,7 @@ FilterValidation.prototype.applyFilter = function (packets) {
     }
 
     function isOperationOrLog(token) {
-        var opeList = ['==', '!=', '~=', '<=', '>=', '<', '>', '&&', '||'];
+        var opeList = ['==', '!=', '~=', '<=', '>=', '<', '>', '&&', '||', '!'];
 
         return (opeList.indexOf(token) != -1)
     }
