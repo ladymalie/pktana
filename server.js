@@ -160,7 +160,7 @@ Server.prototype.start = function (app) {
 
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
-                resolveError(handleError('ERRXXX', error.message));
+                resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid format.'));
                 return;
             }
 
@@ -212,7 +212,7 @@ Server.prototype.start = function (app) {
             fs.exists(filename, function (exists) {
                 if (!exists) {
                     valid = false;
-                    resolveError(handleError('ERRXXX', 'No Error!'));
+                    resolveError(handleError('ERR002', 'File can not be found!'));
                 }
             });
 
