@@ -15,8 +15,8 @@ module.exports = Server;
  */
 var PCAP_DIR = __dirname + '/../pcapDir/'
 
-/*
- * A test pcap data located in PCAP_DIR.
+/**
+ * The path to the config.json file.
  */
 var CONFIG_PATH = __dirname + '/config/config.json';
 
@@ -72,101 +72,16 @@ Server.prototype.start = function (app) {
         var sockets = socketIO.sockets;
 
         var rawPacketList = [];
+
         var decodedPacketList = [];
+        var filteredPacketList = [];
+
         var errorList = [];
+
         var origPacketList = [];
         var packetList = [];
-        var sum = 24;
-
-        socket.on('getFiles', function () {
-            var files = getFileList();
-            var jsonFileList = {0: '-----------'};
-            	if(0 == files.length){
-			handleError('ERR000', 'No .pcap files found.');
-	    	}
-		else{
-            		self.logs.info('files : '+files);
-	    		for (var i = 1; i <= files.length; i++) {
-                		jsonFileList[i] = files[i-1];
-            		}
-            		socketIO.sockets.emit('files', jsonFileList);
-	    	}
-        });
-
-        socket.on('start', function (filename,columnOrder) {
-            var counter = 0;
-            var pcap_session, tcp_tracker;
-            var dateNow = Date.now();
-            var stats;
-            // Instantiate a pcap_session.
-            // An offline session detects packet data from a file.
-            self.logs.info('Reading file: ' + PCAP_DIR + filename);
-	    self.logs.info('Column: ' + columnOrder);
-            try {
-		
-                handleFile(PCAP_DIR + filename);
-           	var PCAP_FILE = PCAP_DIR + filename; 
-                pcap_session = pcap.createOfflineSession(PCAP_DIR + filename, 'ip');
-                stats = fs.statSync(PCAP_FILE);
-            
-                rawPacketList = [];
-                decodedPacketList = [];
-                errorList = [];
-                origPacketList = [];
-                packetList = [];
-
-                tcp_tracker = new pcap.TCPTracker();
-
-            
-
-                //socketIO.sockets.emit('filesize', stats['size']);
-
-                // Listen to a 'packet' event emmitted by [pcap_session].
-                // Here we can do things to the packet data through the callback function.
-                pcap_session.on('packet', function (packet) {
-                    // Decode the packets based on its done by [pcap] automatically.
-                    var fpacket = pcap.decode(packet);
-                    sum += 16 + parseInt(fpacket.pcap_header.len);
-                    var packetData = gatherTableDisplayData(counter++, fpacket);
-                
-                    packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
-
-                    // Emit an event 'packet' to the client.
-                    socketIO.sockets.emit('packet', sum);
-
-                    rawPacketList.push(packet);
-                    decodedPacketList.push(fpacket);
-                
-                    // Track a tcp packet for its message.
-                    // TODO: To be implemented yet.
-                    tcp_tracker.track_packet(fpacket);
-                });
-
-                // Listen to a 'complete' event emitted by [pcap_session].
-                // 'complete' is emitted once all packets in a session is read.
-                pcap_session.on('complete', function () {
-                    origPacketList = packetList;
-
-                    // Emit a 'complete' event to the client.
-                    self.logs.info('Packet load completed in: ' + (Date.now() - dateNow) + ' ms');
-                    socketIO.sockets.emit('complete', packetList);
-                    self.logs.info('Total: ' + sum + 'bytes');
-
-                    fs.writeFile(PCAP_DIR + '赤さたな文字カナ.txt', '赤さたな文字カナ testing', {encoding: 'utf8'}, function (err) {
-                        if (err) {
-                            console.log(err);
-                        } else {
-			    handleError(null,null);
-                            console.log('Success');
-                        }
-                    });
-                });
-                self.logs.info('End of on start');
-            } catch (err) {
-                console.log(err.message);
-                console.log('Blarghhhhhhh');
-            }
-        });
+        var counter = 0;
+        var dateNow = Date.now();
 
         // Listen to a 'disconnect' event emitted by [socket].
         socket.on('disconnect', function (reason) {
@@ -177,40 +92,151 @@ Server.prototype.start = function (app) {
             self.logs.error(err.message);
             self.logs.info('Disconnecting client [' + socket.id + ']');
         });
+
+        /**
+         * A sample event to be used as basis for other events.
+         * @method sample event
+         * @parameteram data {object} The data passed by the client.
+         * @param resolveError {function} The callback that resolves existing errors.
+         *
+         */
+        socket.on('_sampleEvent' /*custom events start with _*/, function (data, resolveError) {
+            console.log(data);
+
+            var err = { "errList": [] };
+
+            // if not the expected data / value / behaviour
+            // err["errList"].push({"error_ID" : "error_message"});
+            console.log(data);
+            //err["errList"].push({ "ERRXXX": "No error!" });
+            resolveError(err);
+            if (err[errList].length == 0) {
+                sockets.emit('_clientEvent', 'data to emit');
+                //return if necessary because it will continue running to the next
+                //lines of code.
+            }
+        });
+
+        socket.on('_getFileList', function(resolveError) {
+            var files = getFileList();
+            var jsonFileList = {0 : '-------------'};
+            for (var i = 1; i <= files.length; i++) {
+                jsonFileList[i] = files[i - 1];
+            }
+
+            if (files.length > 0) {
+                sockets.emit('_showFileList', jsonFileList);
+                resolveError(handleError(undefined, undefined));
+            } else {
+                resolveError(handleError('ERR000', 'No .pcap files found.'));
+            }
+        });
+
+        /*
+         * Gets a list of pcap files from the default directory. @method
+         * getFileList @returns filtered {array} An array of filenames in the
+         * said directory.
+         */
+        function getFileList() {
+            self.logs.info('Reading ' + PCAP_DIR);
+
+            var files = fs.readdirSync(PCAP_DIR);
+            var filtered = files.filter(function(file) {
+                return /\.pcap$/i.test(file);
+            });
+            return filtered;
+        }
+
+        socket.on('_start', function(filename, resolveError) {
+            self.logs.info('Reading file ' + filename);
+            var pcap_session;
+            var tcp_tracker;
+
+            try {
+                var pcap_file = config.pcap_dir + filename;
+                if (!handleFile(pcap_file, resolveError)) {
+                    return;
+                }
+
+                pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
+            } catch (error) {
+                resolveError(handleError('ERRXXX', error.message));
+                return;
+            }
+
+            rawPacketList = [];
+            decodedPacketList = [];
+            errorList = [];
+            origPacketList = [];
+            packetList = [];
+
+            tcp_tracker = new pcap.TCPTracker();
+
+            // Listen to a 'packet' event emmitted by [pcap_session].
+            // Here we can do things to the packet data through the callback function.
+            pcap_session.on('packet', function (packet) {
+                // Decode the packets based on its done by [pcap] automatically.
+                var fpacket = pcap.decode(packet);
+                var packetData = gatherTableDisplayData(counter++, fpacket);
+            
+                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
+
+                // Emit an event 'packet' to the client.
+                socketIO.sockets.emit('packet');
+
+                rawPacketList.push(packet);
+                decodedPacketList.push(fpacket);
+            
+                // Track a tcp packet for its message.
+                // TODO: To be implemented yet.
+                tcp_tracker.track_packet(fpacket);
+            });
+
+            // Listen to a 'complete' event emitted by [pcap_session].
+            // 'complete' is emitted once all packets in a session is read.
+            pcap_session.on('complete', function () {
+                origPacketList = packetList;
+                filteredPacketList = decodedPacketList;
+
+                // Emit a 'complete' event to the client.
+                self.logs.info('Packet load completed in: ' + (Date.now() - dateNow) + ' ms');
+                socketIO.sockets.emit('complete', packetList);
+            });
+
+            resolveError(handleError(undefined, undefined));
+        }); 
+
+        function handleFile(filename, resolveError) {
+            var valid = true;
+            var file;
+            fs.exists(filename, function (exists) {
+                if (!exists) {
+                    valid = false;
+                    resolveError(handleError('ERRXXX', 'No Error!'));
+                }
+            });
+
+            return valid;
+        };
+
+        function handleError(errID, errMsg) {
+            var err = {"errList" : [], "success" : ""};
+
+            if (errID) {
+                err["errList"].push({'errID' : errID, 'errMsg' : errMsg});
+            } else {
+                if (errMsg) {
+                    err["success"] = errMsg;
+                }
+            }
+
+            return err;
+        };
+
         socket.on('selected', function(index) {
             self.logs.info('Selected index: ' + index);
             self.logs.info('Decoded Packet: ' + util.inspect(decodedPacketList[index]));
         });
-
-        function handleFile(filename) {
-            var valid = true;
-            var file;
-            fs.exists(filename, function (exists) {
-                if (exists) {
-                    file = fs.readFile(filename, function (err, data) {
-                        if (err) {
-                            valid = false;
-                            handleError('ERR002', 'Server timed out.');
-                        }
-                    });
-                } else {
-                    valid = false;
-                    handleError('ERR001', 'No such file in directory');	   
-                }
-            });
-        };
-
-        function handleError(errCode, message) {
-            var err = {};
-	    errorList = [];
-            self.logs.info('Handle Error : ' + errCode);
-            if(null!=errCode){
-	    	err['errCode'] = errCode;
-	    	err['errMessage'] = message;
-	    }
-            errorList.push(err);
-            socketIO.sockets.emit('errorList', errorList);
-        }
 
         function gatherTableDisplayData(counter, decoded_packet) {
             var packetData = new Packet();
@@ -223,27 +249,29 @@ Server.prototype.start = function (app) {
                     packetData.srcIP = networkLayer.saddr.toString('ascii');
                     packetData.dstIP = networkLayer.daddr.toString('ascii');
                 }
-		self.logs.info('networkLayer:  ' + networkLayer);
-            	
-		if(networkLayer.protocol.toString()== '6'){
-			packetData.protocol='TCP';
-		}
-		else if(networkLayer.protocol.toString()== '17'){
-                        packetData.protocol='UDP';
-                }
-		else{
-			  packetData.protocol='Something Else';
-		}	
-		packetData.length=decoded_packet.pcap_header.len;
-            	//packetData.info='tv_sec : '+decoded_packet.pcap_header.tv_sec +' tv_usec : '+ decoded_packet.pcap_header.tv_usec + ' caplen : ' +decoded_packet.pcap_header.caplen;
-            	var transportLayer = networkLayer.payload;
-                
-		packetData.info='sport : '+ transportLayer.sport + ' dport : '+ transportLayer.dport + ' length : ' + transportLayer.length + ' checksum : '+transportLayer.checksum;
+        		self.logs.info('networkLayer:  ' + networkLayer);
+                    	
+        		if(networkLayer.protocol.toString()== '6'){
+        			packetData.protocol='TCP';
+        		}
+        		else if(networkLayer.protocol.toString()== '17'){
+                                packetData.protocol='UDP';
+                        }
+        		else{
+        			  packetData.protocol='Something Else';
+        		}
+
+        		packetData.length=decoded_packet.pcap_header.len;
+                // packetData.info='tv_sec : '+decoded_packet.pcap_header.tv_sec +' tv_usec : '+ decoded_packet.pcap_header.tv_usec + ' caplen : ' +decoded_packet.pcap_header.caplen;
+                var transportLayer = networkLayer.payload;
+
+
+        		packetData.info='sport : '+ transportLayer.sport + ' dport : '+ transportLayer.dport + ' length : ' + transportLayer.length + ' checksum : '+transportLayer.checksum;
                 self.logs.info('Transport Layer sport:  ' + transportLayer.sport);
                 self.logs.info('Transport Layer dport:  ' + transportLayer.dport);
-//                self.logs.info('Transport Layer data:  ' + transportLayer.data.toString());
+                // self.logs.info('Transport Layer data:  ' + transportLayer.data.toString());
 
-	    }
+	       }
 	   
             return packetData;
         }
@@ -271,6 +299,7 @@ Server.prototype.start = function (app) {
             self.logs.info('Compile Filter Result : '+ filter);
             if (undefined == valid.errCode) {
                 var filteredList = filterValidator.applyFilter(decodedPacketList);
+                filteredPacketList = filteredList;
                 packetList = [];
                 for (var i = 0; i < filteredList.length; i++) {
                     var packetData = gatherTableDisplayData(i, filteredList[i]);
@@ -279,42 +308,124 @@ Server.prototype.start = function (app) {
 
                 if (0 == filter.length) {
                     packetList = origPacketList;
+                    filteredPacketList = decodedPacketList;
                 }
 
                 socketIO.sockets.emit('filtered', packetList);
             }else{
-		handleError(valid.errCode,valid.errMessage);
-	    }
+                handleError(valid.errCode,valid.errMessage);
+    	    }
             
         });
 
-        socket.on('error', function (err) {
-            self.logs.info(err);
-            if (0 <= errorList.length) {
-                socketIO.sockets.emit('errorList', errorList);
-            }
-        });
-    });
+        socket.on('_saveFile', function (filename, filter, resolveError) {
+            self.logs.info('Saving packets to file ' + filename + '.txt');
 
-    /*
-     * Gets a list of pcap files from the default directory.
-     * @method getFileList
-     * @returns filtered {array} An array of filenames in the said directory.
-     */
-    function getFileList() {
-        try {
-            self.logs.info('Reading ' + PCAP_DIR);
+            var txtFilename = filename.replace('.pcap', '');
+            var time = new Date();
 
-            var files = fs.readdirSync(PCAP_DIR);
-            var filtered = files.filter(function (file) {
-                self.logs.info(file);
-		return /\.pcap/i.test(file);
+            var timestamp = time.getFullYear()
+                + lpad(time.getMonth() + 1)
+                + lpad(time.getDate())
+                + lpad(time.getHours())
+                + lpad(time.getMinutes())
+                + lpad(time.getSeconds());
+            txtFilename += '_' + timestamp;
+            var fileItem = '';
+
+            fs.exists(filename, function (exists) {
+                if (exists) {
+                    resolveError(handleError('ERR004', 'Filename already exists.'));
+                } else {
+                    fileItem += 'pcap繝ｻfilename (' + filename + ')\n';
+                    fileItem += 'filter (' + filter + ')\n';
+                    for (var i = 0; i < filteredPacketList.length; i++) {
+                        fileItem += gatherSavedFileData(filteredPacketList[i]);
+                    }
+
+                    fs.writeFile(PCAP_DIR + txtFilename + '.txt', fileItem, {encoding:'utf8'},function (err) {
+                        if (err) {
+                            self.logs.error(err.message);
+                        } else {
+                            self.logs.info('Successfully saved file.');
+                        }
+                    });
+
+                    resolveError(handleError(undefined, 'Successfully saved file.'));
+                }
             });
-           
-            self.logs.info('Filtered : '+filtered);
-            return filtered;
-        } catch (err) {
-            return;
+        });
+
+        function gatherSavedFileData(packet) {
+            var str = '';
+
+            var dataLinkLayer = packet.payload ? packet.payload : undefined;
+            var networkLayer = packet.payload.payload ? packet.payload.payload : undefined;
+            var transportLayer = packet.payload.payload.payload ? packet.payload.payload.payload : undefined;
+            var applicationLayer = (transportLayer && packet.payload.payload.payload.data) ? packet.payload.payload.payload.data : undefined;
+
+            var packetData = new Packet();
+            packetData.timestamp = packetData.dateFormat(packet.pcap_header.tv_sec, packet.pcap_header.tv_usec);
+            str += '<TimeStamp (' + packetData.timestamp + ')>'
+                + ((networkLayer && transportLayer) ? (',<IP 繝倥ャ繝繝ｼ+TCP繝倥ャ繝繝ｼ (' + networkLayer + ')>') : '')
+                + (transportLayer ? (',<http繝�繝ｼ繧ｿSocket繝ｻIO諠�蝣ｱ驛ｨ (' + transportLayer + ')>') : '')
+                + (applicationLayer ? (',<http繝�繝ｼ繧ｿQR驟堺ｿ｡繝｡繝�繧ｻ繧ｸ繝ｼ驛ｨ(' + 'test3' + ')>') : '')
+                + '\r\n';
+
+            return str;
         }
-    }
+
+        function lpad(num) {
+            if (10 > num) {
+                return '0' + num;
+            }
+
+            return num;
+        }
+
+        socket.on('_getDecodedPacket', function (tabIndex, packetIndex, resolveError) {
+            if (0 == tabIndex) {
+                hexaDecimalFormat(packetIndex);
+            } else {
+                readableFormat(packetIndex);
+            }
+
+            resolveError(handleError(undefined, undefined));
+        });
+
+        function hexaDecimalFormat(packetIndex) {
+            var currPacket = rawPacketList[packetIndex];
+        }
+
+        function readableFormat(packetIndex) {
+            var currPacket = filteredPacketList[packetIndex];
+            var dataLinkLayer = currPacket.payload;
+            var networkLayer = currPacket.payload.payload;
+            var transportLayer = currPacket.payload.payload.payload;
+
+            var formattedString = '';
+
+            if (dataLinkLayer) {
+                if (dataLinkLayer.dhost && dataLinkLayer.shost) {
+                    formattedString += 'src:\t[' + dataLinkLayer.shost.toString('ascii') + '], ';
+                    formattedString += 'dst:\t[' + dataLinkLayer.dhost.toString('ascii') + ']<br>';
+                }
+            }
+            if (networkLayer) {
+                if (networkLayer.saddr && networkLayer.saddr.o1) {
+                    formattedString += 'IPv4, src: [' + networkLayer.saddr.toString('ascii') + '], ';
+                    formattedString += 'dst: [' + networkLayer.daddr.toString('ascii') + ']<br>';
+                }
+            }
+            if (transportLayer) {
+                if (transportLayer.sport && transportLayer.dport) {
+                    formattedString += 'Protocol: ['+ 'unknown' + '], ';
+                    formattedString += 'src port: [' + transportLayer.sport + '], ';
+                    formattedString += 'dst port: [' + transportLayer.dport + ']';
+                }
+            }
+            sockets.emit('_displayDecodedPacket', formattedString);
+        }
+
+    });
 };

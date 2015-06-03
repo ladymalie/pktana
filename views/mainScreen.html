@@ -114,14 +114,9 @@
 
             // dataTable.set('strings.emptyMessage', "Yas!");
             $('#tblPackets tbody').on('click', 'tr', function () {
-                if ($(this).hasClass('selected')) {
-                    $(this).removeClass('selected');
-                }
-                else {
-                    dataTable.$('tr.selected').removeClass('selected');
-                    $(this).addClass('selected');
-                    socket.emit('selected', dataTable.api().row('.selected').index());
-                }
+                dataTable.$('tr.selected').removeClass('selected');
+                $(this).addClass('selected');
+                socket.emit('_getDecodedPacket', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index(), resolveError);
             });
 
 
@@ -145,7 +140,10 @@
                 else{
                     $('#lblError').text('No data can be filtered.');
                 }
+            });
 
+            $('#btnSave').click(function() {
+                
             });
 
             $('#btnLoad').click(function () {
@@ -155,7 +153,7 @@
                 });
                 $('#cmbFilename').prop('disabled', true);
                 dataTable.api().clear().draw();
-                socket.emit('start', filename,columnOrder);
+                socket.emit('_start', filename, resolveError);
             });
 
             var filter = $.fn.dataTable.util.throttle(
@@ -183,17 +181,37 @@
 
         var counter = 0;
         var list = [];
-        var socket = io.connect('http://192.168.1.245:8001/',{transports : ["websocket"]});
+        var socket = io.connect('http://172.24.47.47:8001/',{transports : ["websocket"]});
         var dataTable;
         var dateNow;
 
         socket.on('connect', function () {
             $('#incomingChatMessages').append($('<li>Connected</li>'));
-            socket.emit('getFiles');
+            socket.emit('_getFileList', resolveError);
 
         });
 
-        socket.on('files', function (files) {
+        socket.on('disconnect', function () {
+            $('#incomingChatMessages').append('<li>Disconnected</li>');
+            dataTable.api().clear().draw();
+            counter = 0;
+            console.log($('#tblPackets tr').length);
+        });
+
+        socket.on('error', function(err) {
+
+        });
+
+        socket.on('_pcap-error', function(err) {
+            
+        });
+
+        socket.on('_displayDecodedPacket', function (decoded_packet) {
+            $('#lblAscii').html(decoded_packet.replace('\r\n', '<br>'));
+        });
+
+        socket.on('_showFileList', function (files) {
+        	console.log('here');
             var fList = $('#cmbFilename');
             fList.empty();
             var fileIndex = 0;
@@ -225,13 +243,6 @@
             dataTable.fnProcessingIndicator(false);
 
             dateNow = undefined;
-        });
-
-        socket.on('disconnect', function () {
-            $('#incomingChatMessages').append('<li>Disconnected</li>');
-            dataTable.api().clear().draw();
-            counter = 0;
-            console.log($('#tblPackets tr').length);
         });
 
         socket.on('validated', function (value) {
@@ -271,43 +282,66 @@
             }
             console.log(list);
         });
-	function showDialog()
-    {
-        $("#dialog-modal").dialog(
-        {
-            width: 450,
-            height: 200,
-            modal: true
-         });
-    }
 
-    function hideOverlay(){
-         $("#dialog-modal").dialog( "close" );
-    }
-    function savePacket()
-    {
-         $("#dialog-modal").dialog( "close" );
-    }
+        function resolveError(jsonErrorList) {
+            console.log('errorList: ' + jsonErrorList.errList);
+            console.log('success: ' + jsonErrorList.success);
+            //get jsonErrorList["errList"]
+            if (jsonErrorList["errList"].length == 0) {
+                if (jsonErrorList["success"].length == 0 ) {
+                    $('#lblError').text('');
+                } else { 
+                    //display jsonErrorList["success"];
+                    $('#lblError').text(jsonErrorList['success']);
+                }
+            } else {
+                //  set lblError to visible and set jsonErrorList["errList"] to lblError
+                //  with each error on a different line.
+                var eList = jsonErrorList['errList'];
+                $('#lblError').text('');
+                for (var error in eList) {
+                    $('#lblError').text(eList[error]['errID'] + ': ' + eList[error]['errMsg']);
+                }
+            }
+        }
+
+    	function showDialog() {
+            $("#dialog-modal").dialog(
+            {
+                width: 450,
+                height: 200,
+                modal: true
+             });
+        }
+
+        function hideOverlay() {
+             $("#dialog-modal").dialog( "close" );
+        }
+        function savePacket() {
+        	var filename = '';
+            filename = $('#txtSaveFile').val();
+
+            socket.emit('_saveFile', filename, $('#txtFilter').val(), resolveError);
+             $("#dialog-modal").dialog( "close" );
+        }
 
 
-    function cancelPacket()
-    {
-         $("#dialog-modal").dialog( "close" );
-    }
+        function cancelPacket() {
+             $("#dialog-modal").dialog( "close" );
+        }
 
-    $(function() {
-        $( "#tabs" ).tabs();
-    });
+        $(function() {
+            $( "#tabs" ).tabs();
+        });
 
-    function applyFilter()
-    {
-        $("#dialog-modal").dialog(
-        {
-            width: 450,
-            height: 200,
-            modal: true
-         });
-    }
+        function applyFilter() {
+            $("#dialog-modal").dialog(
+            {
+                width: 450,
+                height: 200,
+                modal: true
+             });
+        }
 
     </script>
 </head>
@@ -417,7 +451,7 @@
             </table>
         </div>
         <div id="tabAscii"style="overflow:scroll;height:19%;width:97%;overflow:auto;">
-              
+              <p id="lblAscii"></p>
         </div>
 
     </div>

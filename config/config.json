@@ -1,5 +1,5 @@
 {
-    "pcap_dir": "../pcapDir",
+    "pcap_dir": "../pcapDir/",
     "filters": [ ],
     "color-rule": { },
     "protocol-rule": { },
