@@ -196,12 +196,14 @@ Server.prototype.start = function (app) {
             
                 packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
 
+                var buf = new Buffer(packet.buf);
+                var cap_len = fpacket.pcap_header.caplen;
+                rawPacketList.push({ "data": buf, "length": cap_len });
+                decodedPacketList.push(fpacket);
+
                 // Emit an event 'packet' to the client.
                 socketIO.sockets.emit('packet');
 
-                rawPacketList.push(packet);
-                decodedPacketList.push(fpacket);
-            
                 // Track a tcp packet for its message.
                 // TODO: To be implemented yet.
                 tcp_tracker.track_packet(fpacket);
@@ -216,6 +218,17 @@ Server.prototype.start = function (app) {
                 // Emit a 'complete' event to the client.
                 self.logs.info('Packet load completed in: ' + (Date.now() - dateNow) + ' ms');
                 socketIO.sockets.emit('complete', packetList);
+            });
+
+            tcp_tracker.on('session', function (session) {
+
+                session.on('data recv', function (session, data) {
+                    console.log("SESSION RECV: " + data);
+                });
+
+                session.on('data send', function (session, data) {
+                    console.log("SESSION SEND: " + data);
+                });
             });
 
             resolveError(handleError(undefined, undefined));
@@ -382,19 +395,49 @@ Server.prototype.start = function (app) {
 
         socket.on('_getDecodedPacket', function (tabIndex, packetIndex, resolveError) {
             if (0 == tabIndex) {
-                hexaDecimalFormat(packetIndex);
+                hexaDecimalFormat(packetIndex, resolveError);
             } else {
-                readableFormat(packetIndex);
+                readableFormat(packetIndex, resolveError);
             }
-
-            resolveError(handleError(undefined, undefined));
         });
 
-        function hexaDecimalFormat(packetIndex) {
+        function hexaDecimalFormat(packetIndex, resolveError) {
             var currPacket = rawPacketList[packetIndex];
+            var packetData = currPacket["data"].toString('hex').slice(0, currPacket["length"] * 2);
+            var hexDataTable = [];
+            var row = "";
+            var ctr = 0;
+            var rowCount = 0;
+
+            for (var i = 0; i < packetData.length; i += 2) {
+                if (ctr == 16) {
+                    var str = "" + rowCount;
+                    rowCount += 10;
+                    var pad = "0000";
+                    var res = pad.substring(0, pad.length - str.length) + str;
+                    hexDataTable.push({ "rowNum": res, "rowData": row });
+                    row = '';
+                    ctr = 0;
+                } else if (ctr == 8) {
+                    row += '|';
+                }
+
+                row += packetData[i] + '' + packetData[i + 1] + ' ';
+                ctr++;
+
+                if (i + 2 == packetData.length) {
+                    var str = "" + rowCount++;
+                    var pad = "0000";
+                    var res = pad.substring(0, pad.length - str.length) + str;
+                    hexDataTable.push({ "rowNum": res, "rowData": row });
+                }
+
+            }
+            resolveError(handleError(undefined, undefined));
+            sockets.emit('_displayRawPacket', hexDataTable);
         }
 
-        function readableFormat(packetIndex) {
+        function readableFormat(packetIndex, resolveError) {
             var currPacket = filteredPacketList[packetIndex];
             var dataLinkLayer = currPacket.payload;
             var networkLayer = currPacket.payload.payload;
@@ -416,11 +459,12 @@ Server.prototype.start = function (app) {
             }
             if (transportLayer) {
                 if (transportLayer.sport && transportLayer.dport) {
-                    formattedString += 'Protocol: ['+ 'unknown' + '], ';
+                    formattedString += 'Protocol: [' + 'unknown' + '], ';
                     formattedString += 'src port: [' + transportLayer.sport + '], ';
                     formattedString += 'dst port: [' + transportLayer.dport + ']';
                 }
             }
+            resolveError(handleError(undefined, undefined));
             sockets.emit('_displayDecodedPacket', formattedString);
         }
 
