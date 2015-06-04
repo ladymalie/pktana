@@ -172,9 +172,9 @@ Server.prototype.start = function (app) {
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
                 if (error.code === 'ENOENT') {
-                    resolveError(handleError('ERR002', 'File cannot be found.'));
+                    resolveError(handleError('ERR002', langConfig["ERR002"]));
                 } else {
-                    resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid pcap format.'));
+                    resolveError(handleError('ERR001', langConfig["ERR001"]));
                 }
                 return;
             }
