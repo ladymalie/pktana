@@ -1,7 +1,11 @@
 {
     "pcap_dir": "../pcapDir/",
     "filters": [ ],
-    "color-rule": { },
+    "color-rule": {
+    	"TCP" 		: "#92CDDC",
+    	"WEBSOCKET" : "#FABF8F",
+    	"HTTP" 		: "#C0D6FF",
+    	"OTHERS" 	: "#FFFFFF"},
     "protocol-rule": { },
     "hostnames": { }
 }

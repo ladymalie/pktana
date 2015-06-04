@@ -39,6 +39,10 @@
     </style>
 
     <script>
+
+        // //Variable used to verify if filter button is clicked.
+        // //Used to identify that there is a raw packet data.
+        var isPacketDataLoaded = false;
         $(function () {
             var columnOrder =['counter','srcIP','dstIP','timestamp','Protocol','message','info'];
             console.log(columnOrder);
@@ -107,10 +111,17 @@
 
             $('#btnApplyFilter').click(function () {
                 var txtBox = $('#txtFilter');
+                // filterClick = true;
                 console.log(txtBox.val());
                 //Check if there was a file selected 
                 // if(0 < dataTable.fnGetData().length){
-                    socket.emit('filter', txtBox.val(),resolveError);
+                    if(isPacketDataLoaded){
+                        socket.emit('filter', txtBox.val(),resolveError);
+                    }
+                    else{
+                        $('#lblError').text('No file was loaded.');
+                    }
+
                 // }
                 // else{
                 //     $('#lblError').text('No data can be filtered.');
@@ -123,6 +134,7 @@
 
             $('#btnLoad').click(function () {
                 var filename = '';
+                //Set filter click to false. To load and refresh raw packet data on the server side.
                 $("#cmbFilename option:selected").each(function () {
                     filename += $(this).text() + "";
                 });
@@ -139,13 +151,14 @@
             );
 
             $('#cmbFilename').change(function () {
+            console.log("On cmbFilename");
                  checkDataTable();
             });
         });
         
-
         function checkDataTable(){
-            if( 0 >= dataTable.fnSettings().aoData.length){
+            console.log("checkDataTable");
+            if( 0 >= dataTable.fnSettings().aoData.length && isPacketDataLoaded==false){
                                 $('#btnSave').attr('disabled','disabled');
                                 $('#txtFilter').attr('disabled','disabled');
                                 $('#btnApplyFilter').attr('disabled','disabled');
@@ -174,6 +187,7 @@
             dataTable.api().clear().draw();
             counter = 0;
             console.log($('#tblPackets tr').length);
+            $('#lblError').text('Disconnected from Server');
         });
 
         socket.on('error', function(err) {
@@ -218,10 +232,16 @@
             console.log(((Date.now() - dateNow) / 1000) + " sec");
             dataTable.api().rows.add(data).draw();
             dataTable.fnProcessingIndicator(false);
-
             dateNow = undefined;
+            // console.log("On Complete filterClick : " +filterClick);
+            // if(!filterClick){
+            // console.log("On complete");
+            if (0 < dataTable.fnSettings().aoData.length) {
+                isPacketDataLoaded = true;
+            };
+                checkDataTable();
+            // }
 
-            checkDataTable();
         });
 
         socket.on('validated', function (value) {
@@ -245,7 +265,8 @@
         });
 
 
-        function resolveError(jsonErrorList) {            $('#cmbFilename').removeAttr('disabled');
+        function resolveError(jsonErrorList) {            
+            $('#cmbFilename').removeAttr('disabled');
             console.log('errorList: ' + jsonErrorList.errList);
             console.log('success: ' + jsonErrorList.success);
             //get jsonErrorList["errList"]
@@ -264,8 +285,22 @@
                 for (var error in eList) {
                     $('#lblError').text(eList[error]['errID'] + ': ' + eList[error]['errMsg']);
                 }
+
+                //Check if there were no problems in loading the new file in the server.
+                switch(eList[0]['errID']){
+                    case 'ERR001':
+                    case 'ERR002':
+                        isPacketDataLoaded = false;
+                        socket.emit('_getFileList', resolveError);
+                        break;
+                    case 'ERR000':
+                         $('#cmbFilename').find('option').remove();
+                        break;
+                }
+
+                console.log("On resolveError");
+                checkDataTable();
             }
-            checkDataTable();
         }
 
     	function showDialog() {

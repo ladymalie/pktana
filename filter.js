@@ -21,18 +21,21 @@ Array.prototype.peek = function () {
 FilterValidation.prototype.compileFilter = function (str) {
     _stack = [];
     _typeList = [];
-    var result = true;
+    var result = {"errCode" : '', "errMessage" : '','valid' : true};
     var logs = this.logs;
-    logs.info("sample write log file");
-    if (!str && str.trim().length <= 0) {
-        return result;
+    if (!str && str.trim().length  == 0) {
+        logs.info("syntax empty");
+        return setError(result,'ERR00206','Invalid Syntax is empty');
+    }else if(!str && str.trim().length > 80){
+        return setError('ERR00108','Filter should be less than 80 characters long.');
     }
+
 
     var cleanStr = str.trim();
     cleanStr = cleanStr.replace(/\s+/g, '');
     splitString(cleanStr);
     classify(_stack);
-    result = checkGrammar();
+    result = checkGrammar(result);
 
     /**
      * Split the filter string to prepare for classification of its parts.
@@ -235,15 +238,14 @@ FilterValidation.prototype.compileFilter = function (str) {
      * @method checkGrammar
      * @return {boolean} True if the grammar is correct. Else, false.
      */
-    function checkGrammar() {
-        var correctness = true;
+    function checkGrammar(result) {
+        var correctness = result;
         var traversal = 0;
         var currentDataType = _typeList[traversal];
         var state = 'start';
         var parOpen = false;
         var pairVal = '', pairVar = '', pairOpe = '';
         var parStack = [];
-	var prevDataType = currentDataType;
         while (true) {
             switch (state) {
                 case ('start'):
@@ -253,6 +255,8 @@ FilterValidation.prototype.compileFilter = function (str) {
 
                     if (state == 'log' || state == 'ope' || state == 'cPar') {
                         state = 'falseEnd';
+                        correctness = setError(result,'ERR200','Invalid syntax. Filter cannot begin with an operator.');
+                        logs.info('problem here' + correctness['errCode']);
                     } else if (state == 'val') {
                         pairVal = _stack[traversal];
                     } else if (state == 'var') {
@@ -270,15 +274,13 @@ FilterValidation.prototype.compileFilter = function (str) {
                     if (state == 'oPar') {
                         parStack.push(_stack[traversal]);
                     } else if (state == 'log' || state == 'ope' || state == 'cPar') {
+                       correctness = setError(result,'ERR205','Invalid syntax. An operator’s right-hand side cannot be empty.');
                         state = 'falseEnd';
                     } else if (state == 'val') {
                         pairVal = _stack[traversal];
                     } else if (state == 'var') {
                         pairVar = _stack[traversal];
-                    } else if (prevDataType != 'varOpe' || prevDataType != 'start'){
-			state = 'falseEnd';
-			logs.info('prevDataType != varOpe || start');
-		    }
+                    } 
                     break;
                 case ('cPar'):
                     logs.info('Check Grammar State : '+ state);
@@ -287,13 +289,14 @@ FilterValidation.prototype.compileFilter = function (str) {
 
                     if (state == 'cPar') {
                         if (parStack.length == 0) {
-                            correctness = false;
+                            correctness = setError(result,'ERR206','Invalid syntax. Missing opening parenthesis in the filter.');
                             return correctness;
                         }
                         parStack.pop();
                     } else if (state == 'log') {
                         state = 'start';
                     } else {
+                         correctness = setError(result,'ERR207','Invalid syntax. Closing parenthesis cannot be followed by variable or another value.');
                         state = 'falseEnd';
                     }
                     break;
@@ -312,6 +315,7 @@ FilterValidation.prototype.compileFilter = function (str) {
                         state = 'end';
                     } else {
                         state = 'falseEnd';
+                        correctness = setError(result,'ERR204','Invalid syntax. A variable cannot be followed by a value or another variable.');
                     }
 
                     break;
@@ -325,6 +329,7 @@ FilterValidation.prototype.compileFilter = function (str) {
                         pairOpe = _stack[traversal];
                     } else {
                         state = 'falseEnd';
+                        correctness = setError(result,'ERR203','Invalid syntax. A value cannot be followed by a variable or another value.');
                     }
                     break;
                 case ('varOpe'):
@@ -334,10 +339,11 @@ FilterValidation.prototype.compileFilter = function (str) {
 
                     if (state == 'val') {
                         state = 'end';
-			logs.info('inside varOpe  state '+ state);
+			             logs.info('inside varOpe  state '+ state);
                         pairVal = _stack[traversal];
                     } else {
                         state = 'falseEnd';
+                        correctness = setError(result,'ERR205','Invalid syntax. An operator’s right-hand side cannot be empty.');
                     }
                     break;
                 case ('valOpe'):
@@ -346,10 +352,11 @@ FilterValidation.prototype.compileFilter = function (str) {
                     state = currentDataType;
 
                     if (state == 'var') {
-			logs.info('inside valOpe  state '+ state);
+			             logs.info('inside valOpe  state '+ state);
                         state = 'end';
                         pairVar = _stack[traversal];
                     } else {
+                        correctness = setError(result,'ERR205','Invalid syntax. An operator’s right-hand side cannot be empty.');
                         state = 'falseEnd';
                     }
                     break;
@@ -361,17 +368,17 @@ FilterValidation.prototype.compileFilter = function (str) {
                     if (state == 'log') {
                         state = 'start';
                         pairVal = pairOpe = pairVar = '';
-			logs.info('end state is log');
+			             logs.info('end state is log');
                     } else if (state == 'cPar') {
                         state = 'end';
                         if (parStack.length == 0) {
                         	logs.info('end parStack.length ==0');
-                            	correctness = false;
+                                correctness = setError(result,'ERR999','Invalid syntax.');
                             	return correctness;
                         }
                         parStack.pop();
                     } else {
-			logs.info('end false END');
+			         logs.info('end false END');
                         state = 'falseEnd';
                     }
                     break;
@@ -396,7 +403,7 @@ FilterValidation.prototype.compileFilter = function (str) {
                     state = currentDataType;
                     if (state == 'cPar') {
                         if (parStack.length == 0) {
-                            correctness = false;
+                            correctness = setError(result,'ERR999','Invalid syntax. parStack.length == 0');
                             return correctness;
                         }
                         state = 'end';
@@ -419,8 +426,24 @@ FilterValidation.prototype.compileFilter = function (str) {
                 //Prematurely stop the traversal when validation fails.
                 if (0 != pairOpe.length || 0 != pairVal.length) {
                     if (!validateValues(pairVar, pairOpe, pairVal)) {
-			logs.info('!validateValues(pairVar, pairOpe, pairVal)');
-                        correctness = false;
+			             logs.info('!validateValues(pairVar, pairOpe, pairVal)');
+                        if ('src.ip' === pairVar || 'dst.ip' === pairVar) {
+                                correctness = setError(result,'ERR105','Invalid syntax. Value is not a valid IP Address.');
+                        } else if ('src.port' == pairVar || 'dst.port' == pairVar) {
+                                correctness = setError(result,'ERR106','Invalid syntax. Value is not a valid Port number.');
+                        } else {
+                            if (">" == pairOpe || "<=" == pairOpe|| ">=" == pairOpe|| "<" == pairOpe) {
+                                    correctness = setError(result,'ERR103','<, <=, > or >= is not a valid operator for <msg || http || protocol>.');
+                            }
+                            else{
+                                if('protocol' == pairVar){
+                                    correctness = setError(result,'ERR100','Value must be a number.');
+                                }
+                                else{ 
+                                    correctness = setError(result,'ERR101','Msg Value must be enclosed in " ".');
+                                }
+                            }
+                        }
                         return correctness;
                     }
                 }
@@ -428,13 +451,13 @@ FilterValidation.prototype.compileFilter = function (str) {
 
             //Prematurely stop the traversal when an incorrect pattern is found.
             if ('falseEnd' === state) {
-		logs.info('falseEnd === state');
-                correctness = false;
+		      logs.info('falseEnd === state');
+                // correctness = false;
                 break;
             }
 
             traversal++;
-	    prevDataType = currentDataType;
+	       prevDataType = currentDataType;
             currentDataType = _typeList[traversal];
 
             if (!currentDataType) {
@@ -442,16 +465,29 @@ FilterValidation.prototype.compileFilter = function (str) {
             }
         }
 
+        logs.info("End of loop "+ correctness['errCode']);
         if (1 == _typeList.length) {
-            correctness = ('var' === state);
+            if('var' === state){
+                correctness = setError(result,null,null);
+            }
+            else{
+                correctness = setError(result,'ERR200','Invalid syntax. Filter cannot begin with an operator.');
+            }
         } else if (0 == _typeList.length) {
-            correctness = true;
+            correctness = setError(result,null,null);
         } else if (0 != parStack.length) {
-            correctness = false;
+            correctness = setError(result,'ERR999','Invalid Syntax. Filter is not readable.');
         } else {
-            correctness = ('notVar' === state || 'var' === state || 'end' === state);
+            if(!('notVar' === state || 'var' === state || 'end' === state)){
+                correctness = setError(result,'ERR999','0 != parStack.length');
+            }
+            else{
+                correctness = setError(result,null,null);
+            }
         }
 
+        logs.info("END END End of loop "+ correctness['errCode']);
+        logs.info("END END End of loop "+ correctness['errMessage']);
         /**
          * Validates the value against the variable it is paired with.
          * @method validateValues
@@ -464,6 +500,7 @@ FilterValidation.prototype.compileFilter = function (str) {
             var result = false;
             var ipRegex = /^(?!0)(?!.*\.$)((1?\d?\d|25[0-5]|2[0-4]\d)(\.|$)){4}$/;
             var strRegex = /"(.| )+"/;
+            var numRegex = /^[0-9]*$/;
             if ('src.ip' === variable || 'dst.ip' === variable) {
                 if ("~=" !== ope) {
                     result = ipRegex.test(value);
@@ -474,23 +511,47 @@ FilterValidation.prototype.compileFilter = function (str) {
                     result = intTest >= 1 && intTest <= 65535 && value === String(intTest);
                 }
             } else {
-                if ('protocol' === variable) {
-                    if ("~=" !== ope) {
+                logs.info("Protocol ope : "+ope);
+                if ("~=" !== ope && ">" !== ope && "<=" !== ope && ">=" !== ope && "<" !== ope) {
+                    logs.info("Protocol variable  if condition: "+variable);
+                    if('protocol' == variable){
+                        return numRegex.test(value);
+                    }
+                    else{
                         return strRegex.test(value);
                     }
-                } else {
-                    if ("~=" === ope) {
-                        return strRegex.test(value);
-                    }
+
+                }else{
+
+                    logs.info("Protocol ope  else condition: "+ope);
+
                 }
             }
-	    logs.info('returning results');
+            
+	       logs.info('returning results of validate : '+result);
             return result;
         }
-	logs.info('returning correctness');
+	   logs.info('returning correctness errCode' +correctness['errCode']);
+       logs.info('returning correctness errMessage' +correctness['errMessage']);
+       logs.info('returning correctness valid' +correctness['valid']);
         return correctness;
     };
- 	logs.info('returnning last result');
+       logs.info('returning last errCode' +result['errCode']);
+       logs.info('returning last errMessage' +result['errMessage']);
+       logs.info('returning last valid' +result['valid']);
+
+    function setError(result,errCode,errMessage){
+        result['errCode']=errCode;
+        result['errMessage']=errMessage;
+
+        if(undefined == errCode  &&  undefined == errMessage)
+            result['valid'] = true;
+        else{
+            result['valid'] = false;
+        }
+        return result;
+    };
+
     return result;
 };
 
@@ -647,13 +708,18 @@ FilterValidation.prototype.applyFilter = function (packets) {
         } else if ("msg" === variable) {
 
         } else if ("protocol" === variable) {
-
+            logs.info("On compare protocol");
+            result = networkLayer && networkLayer.protocol &&
+                compareValues(networkLayer.protocol, operation, value);
         }
 
         return result;
     };
 
     function compareValues(actual, operation, expected) {
+
+        logs.info("actual : "+actual);
+        logs.info("expected : "+expected);
         if ("==" === operation) {
             return actual == expected;
         } else if ("<=" === operation) {
@@ -704,5 +770,7 @@ FilterValidation.prototype.applyFilter = function (packets) {
 
         return result;
     };
+
+
     return filtered;
 };

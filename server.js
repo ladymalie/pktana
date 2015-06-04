@@ -152,15 +152,19 @@ Server.prototype.start = function (app) {
             var pcap_session;
             var tcp_tracker;
             counter = 0;
-            try {
-                var pcap_file = config.pcap_dir + filename;
-                if (!handleFile(pcap_file, resolveError)) {
+
+            fs.stat(filename, function (err, stat) {
+                if (err) {
+                    resolveError(handleError('ERR002', 'File cannot be found.'));
                     return;
                 }
-
+            });
+	    var pcap_file = PCAP_DIR + filename;
+            self.logs.info('PCAPFILE ' +pcap_file);		
+            try {
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
-                resolveError(handleError('ERRXXX', error.message));
+                resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid pcap format.'));
                 return;
             }
 
@@ -204,20 +208,7 @@ Server.prototype.start = function (app) {
             });
 
             resolveError(handleError(undefined, undefined));
-        }); 
-
-        function handleFile(filename, resolveError) {
-            var valid = true;
-            var file;
-            fs.exists(filename, function (exists) {
-                if (!exists) {
-                    valid = false;
-                    resolveError(handleError('ERRXXX', 'No Error!'));
-                }
-            });
-
-            return valid;
-        };
+        });
 
         function handleError(errID, errMsg) {
             var err = {"errList" : [], "success" : ""};
@@ -294,27 +285,31 @@ Server.prototype.start = function (app) {
             self.logs.info(filter);
 
             var filterValidator = new Filter(self.logs);
-            var valid = filterValidator.compileFilter(filter);
-            
-            self.logs.info('Compile Filter Result : '+ filter);
+            var result = filterValidator.compileFilter(filter);
+                
+               self.logs.info('Client Recieved errCode' +result['errCode']);
+               self.logs.info('Client Recieved  errMessage' +result['errMessage']);
+               self.logs.info('Client Recieved  valid' +result['valid']);
+               var valid = result['valid'];
+               self.logs.info('Client Recieved  valid var' +valid);
             if (valid) {
+                 self.logs.info('Compile Filter Result : '+ valid.toString());
                 var filteredList = filterValidator.applyFilter(decodedPacketList);
                 filteredPacketList = filteredList;
                 packetList = [];
                 for (var i = 0; i < filteredList.length; i++) {
                     var packetData = gatherTableDisplayData(i, filteredList[i]);
-                    //packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP]);
-			packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
+                    packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
                 }
 
                 if (0 == filter.length) {
                     packetList = origPacketList;
                     filteredPacketList = decodedPacketList;
                 }
-		resolveError(handleError('', ''));
+				resolveError(handleError('', ''));
                 socketIO.sockets.emit('filtered', packetList);
             }else{
-                resolveError(handleError('ERR001', 'Invalid Syntax'));
+                resolveError(handleError(result['errCode'], result['errMessage']));
     	    }
             
         });
