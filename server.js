@@ -152,19 +152,18 @@ Server.prototype.start = function (app) {
             var pcap_session;
             var tcp_tracker;
             counter = 0;
+            var pcap_file = PCAP_DIR + filename;
 
-            fs.stat(filename, function (err, stat) {
-                if (err) {
-                    resolveError(handleError('ERR002', 'File cannot be found.'));
-                    return;
-                }
-            });
-	    var pcap_file = PCAP_DIR + filename;
             self.logs.info('PCAPFILE ' +pcap_file);		
             try {
+                fs.statSync(pcap_file);
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
-                resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid pcap format.'));
+                if (error.code === 'ENOENT') {
+                    resolveError(handleError('ERR002', 'File cannot be found.'));
+                } else {
+                    resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid pcap format.'));
+                }
                 return;
             }
 
