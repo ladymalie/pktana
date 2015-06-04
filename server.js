@@ -20,6 +20,11 @@ var PCAP_DIR = __dirname + '/../pcapDir/'
  */
 var CONFIG_PATH = __dirname + '/config/config.json';
 
+/**
+ * The path to the language config.json file.
+ */
+var LOCALE_CONFIG_PATH = __dirname + '/config/lang-en.json';
+
 /*
  * The function which serves as the constructor for the module.
  * @method Server
@@ -42,7 +47,7 @@ function Server(logger) {
  *
  */
 Server.prototype.start = function (app) {
-    var config;
+    var config, langConfig;
     var self = this;
     self.app = app;
 
@@ -50,6 +55,13 @@ Server.prototype.start = function (app) {
         config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     } catch (e) {
         self.logs.error('GWSV028 failed to read config file[' + CONFIG_PATH + ']. reason: ' + e.message);
+        return;
+    }
+
+    try {
+        langConfig = JSON.parse(fs.readFileSync(LOCALE_CONFIG_PATH, 'utf8'));
+    } catch (e) {
+        self.logs.error('GWSV028 failed to read config file[' + LOCALE_CONFIG_PATH + ']. reason: ' + e.message);
         return;
     }
 
@@ -128,7 +140,7 @@ Server.prototype.start = function (app) {
                 sockets.emit('_showFileList', jsonFileList);
                 resolveError(handleError(undefined, undefined));
             } else {
-                resolveError(handleError('ERR000', 'No .pcap files found.'));
+                resolveError(handleError('ERR000', langConfig["ERR000"]));
             }
         });
 
@@ -154,7 +166,7 @@ Server.prototype.start = function (app) {
             counter = 0;
             var pcap_file = PCAP_DIR + filename;
 
-            self.logs.info('PCAPFILE ' +pcap_file);		
+            self.logs.info('PCAPFILE ' + pcap_file);
             try {
                 fs.statSync(pcap_file);
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
