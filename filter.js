@@ -1,10 +1,11 @@
 module.exports = FilterValidation;
 
-function FilterValidation() {
+function FilterValidation(logger) {
     this._stack = [];
     this._typeList = [];
 
     this._packets = [];
+    this.logs = logger;
 }
 
 
@@ -21,7 +22,7 @@ FilterValidation.prototype.compileFilter = function (str) {
     _stack = [];
     _typeList = [];
     var result = true;
-
+    var logs = this.logs;
     if (!str && str.trim().length <= 0) {
         return result;
     }
@@ -244,6 +245,8 @@ FilterValidation.prototype.compileFilter = function (str) {
         while (true) {
             switch (state) {
                 case ('start'):
+		    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'log' || state == 'ope' || state == 'cPar') {
@@ -258,6 +261,8 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('oPar'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'oPar') {
@@ -268,9 +273,11 @@ FilterValidation.prototype.compileFilter = function (str) {
                         pairVal = _stack[traversal];
                     } else if (state == 'var') {
                         pairVar = _stack[traversal];
-                    }
+                    } 
                     break;
                 case ('cPar'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'cPar') {
@@ -286,6 +293,8 @@ FilterValidation.prototype.compileFilter = function (str) {
                     }
                     break;
                 case ('var'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'log') {
@@ -302,6 +311,8 @@ FilterValidation.prototype.compileFilter = function (str) {
 
                     break;
                 case ('val'):
+                    logs.info('Check Grammar State : '+ state);
+                    logs.info('Check Grammar Character : '+ _stack[traversal]);
                     state = currentDataType;
 
                     if (state == 'ope') {
@@ -465,6 +476,7 @@ FilterValidation.prototype.compileFilter = function (str) {
  */
 FilterValidation.prototype.applyFilter = function (packets) {
     var result = [];
+    logs = this.logs;
 
     //Store the starting indexes of each segment divided by a logical operator.
     var postFix = convertToPostFix();

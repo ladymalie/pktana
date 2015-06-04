@@ -10,6 +10,11 @@ var Filter = require('./filter');
 
 module.exports = Server;
 
+/*
+ * The default directory where all the pcap data is stored.
+ */
+var PCAP_DIR = __dirname + '/../pcapDir/'
+
 /**
  * The path to the config.json file.
  */
@@ -146,6 +151,7 @@ Server.prototype.start = function (app) {
             self.logs.info('Reading file ' + filename);
             var pcap_session;
             var tcp_tracker;
+            counter = 0;
 
             fs.stat(filename, function (err, stat) {
                 if (err) {
@@ -153,7 +159,8 @@ Server.prototype.start = function (app) {
                     return;
                 }
             });
-
+	    var pcap_file = PCAP_DIR + filename;
+            self.logs.info('PCAPFILE ' +pcap_file);		
             try {
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
@@ -269,30 +276,30 @@ Server.prototype.start = function (app) {
             socketIO.sockets.emit('validated', valid);
         });
 
-        socket.on('filter', function (filter) {
+        socket.on('filter', function (filter, resolveError) {
             self.logs.info(filter);
 
             var filterValidator = new Filter(self.logs);
             var valid = filterValidator.compileFilter(filter);
             
             self.logs.info('Compile Filter Result : '+ filter);
-            if (undefined == valid.errCode) {
+            if (valid) {
                 var filteredList = filterValidator.applyFilter(decodedPacketList);
                 filteredPacketList = filteredList;
                 packetList = [];
                 for (var i = 0; i < filteredList.length; i++) {
                     var packetData = gatherTableDisplayData(i, filteredList[i]);
-                    packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP]);
+                    packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
                 }
 
                 if (0 == filter.length) {
                     packetList = origPacketList;
                     filteredPacketList = decodedPacketList;
                 }
-
+				resolveError(handleError('', ''));
                 socketIO.sockets.emit('filtered', packetList);
             }else{
-                handleError(valid.errCode,valid.errMessage);
+                resolveError(handleError('ERR001', 'Invalid Syntax'));
     	    }
             
         });
