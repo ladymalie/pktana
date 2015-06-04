@@ -10,11 +10,6 @@ var Filter = require('./filter');
 
 module.exports = Server;
 
-/*
- * The default directory where all the pcap data is stored.
- */
-var PCAP_DIR = __dirname + '/../pcapDir/'
-
 /**
  * The path to the config.json file.
  */
@@ -152,15 +147,17 @@ Server.prototype.start = function (app) {
             var pcap_session;
             var tcp_tracker;
 
-            try {
-                var pcap_file = config.pcap_dir + filename;
-                if (!handleFile(pcap_file, resolveError)) {
+            fs.stat(filename, function (err, stat) {
+                if (err) {
+                    resolveError(handleError('ERR002', 'File cannot be found.'));
                     return;
                 }
+            });
 
+            try {
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
-                resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid format.'));
+                resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid pcap format.'));
                 return;
             }
 
@@ -204,20 +201,7 @@ Server.prototype.start = function (app) {
             });
 
             resolveError(handleError(undefined, undefined));
-        }); 
-
-        function handleFile(filename, resolveError) {
-            var valid = true;
-            var file;
-            fs.exists(filename, function (exists) {
-                if (!exists) {
-                    valid = false;
-                    resolveError(handleError('ERR002', 'File can not be found!'));
-                }
-            });
-
-            return valid;
-        };
+        });
 
         function handleError(errID, errMsg) {
             var err = {"errList" : [], "success" : ""};
@@ -232,11 +216,6 @@ Server.prototype.start = function (app) {
 
             return err;
         };
-
-        socket.on('selected', function(index) {
-            self.logs.info('Selected index: ' + index);
-            self.logs.info('Decoded Packet: ' + util.inspect(decodedPacketList[index]));
-        });
 
         function gatherTableDisplayData(counter, decoded_packet) {
             var packetData = new Packet();
