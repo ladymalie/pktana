@@ -1,6 +1,7 @@
 var node_http = require('http');
 var io = require('socket.io');
-var pcap = require('pcap');
+var pcap = require('pcap'),
+    wsParser = require('pcap/decode/websocket');
 var fs = require('fs');
 var util = require('util');
 
@@ -36,7 +37,7 @@ function Server(logger) {
     }
 
     this.logs = logger.getLogger('server');
-
+    this.logs.setLevel('ERROR');
 };
 
 /**
@@ -166,6 +167,8 @@ Server.prototype.start = function (app) {
             counter = 0;
             var pcap_file = PCAP_DIR + filename;
 
+            var currSrc, currDst, key;
+
             self.logs.info('PCAPFILE ' + pcap_file);
             try {
                 fs.statSync(pcap_file);
@@ -187,19 +190,42 @@ Server.prototype.start = function (app) {
 
             tcp_tracker = new pcap.TCPTracker();
 
+            var protocol; var message;
+
             // Listen to a 'packet' event emmitted by [pcap_session].
             // Here we can do things to the packet data through the callback function.
             pcap_session.on('packet', function (packet) {
                 // Decode the packets based on its done by [pcap] automatically.
                 var fpacket = pcap.decode(packet);
-                var packetData = gatherTableDisplayData(counter++, fpacket);
+                var packetData = gatherTableDisplayData(counter, fpacket);
 
+                var networkLayer = fpacket.payload.payload;
+                var transportLayer = networkLayer.payload;
+
+                if (networkLayer && transportLayer) {
+                    currDst = networkLayer.daddr.toString('ascii') + ':'+ transportLayer.dport;
+                    currSrc = networkLayer.saddr.toString('ascii') + ':'+ transportLayer.sport;
+                }
+
+                if (currSrc < currDst) {
+                    key = currSrc + "-" + currDst;
+                } else {
+                    key = currDst + "-" + currSrc;
+                }
                 // Track a tcp packet for its message.
                 // TODO: To be implemented yet.
                 tcp_tracker.track_packet(fpacket);
-
-                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP, packetData.protocol, packetData.length, packetData.info, packetData.message]);
-
+                var packetProtocol = packetData.protocol;
+                if (protocol) {
+                    packetProtocol = protocol;
+                    protocol = undefined;
+                }
+                var packetMessage = packetData.message;
+                if (message) {
+                    packetMessage = message.substr(0, 30);
+                    message = undefined;
+                }
+                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP, packetProtocol, packetData.length, packetData.info, packetMessage]);
                 var buf = new Buffer(packet.buf);
                 var cap_len = fpacket.pcap_header.caplen;
                 rawPacketList.push({ "data": buf, "length": cap_len });
@@ -207,6 +233,8 @@ Server.prototype.start = function (app) {
 
                 // Emit an event 'packet' to the client.
                 socketIO.sockets.emit('packet');
+
+                counter++;
             });
 
             // Listen to a 'complete' event emitted by [pcap_session].
@@ -218,21 +246,94 @@ Server.prototype.start = function (app) {
                 // Emit a 'complete' event to the client.
                 self.logs.info('Packet load completed in: ' + (Date.now() - dateNow) + ' ms');
                 socketIO.sockets.emit('complete', packetList);
+                console.log(sessions);
             });
 
-            tcp_tracker.on('session', function (session) {
+            var sessions = {}; //temporary
 
+            tcp_tracker.on('session', function (session) {
+                if (!sessions[key]) {
+                    sessions[key] = [];
+                }
+                sessions[key].push(counter);
+                //var parser = new wsParser();
                 session.on('data recv', function (session, data) {
-                    console.log("SESSION RECV: " + data);
+                    message = data.toString();
+                    if (session.isUpgraged) {
+                        protocol = session.protocol;
+                        var ws = decodeWebsocket(data);
+                        message = ws.message;
+                    }
+                    
+                    if (data.toString().indexOf('Connection: Upgrade') > -1 && 
+                        data.toString().indexOf('Upgrade: websocket') > -1) {
+                        session.isUpgraged = true;
+                        session.protocol = 'Websocket';
+                    }
                 });
 
                 session.on('data send', function (session, data) {
-                    console.log("SESSION SEND: " + data);
+                    message = data.toString();
+                    if (session.isUpgraged) {
+                        protocol = session.protocol;
+                        var ws = decodeWebsocket(data);
+                        message = ws.message;
+                    }
                 });
             });
 
             resolveError(handleError(undefined, undefined));
         });
+
+        function decodeWebsocket(data) {
+            var result = {};
+            var buf = new Buffer(data);
+            var offset = 0;
+            var hex = buf.toString('hex');
+            var byte_one = hex.substr(offset, 2); offset += 2;
+            var byte_two = hex.substr(offset, 2); offset += 2;
+            var payload_len = 0;
+            var fin_flag = false;
+            var mask_flag = false;
+            var mask = '';
+
+            var fin = parseInt(byte_one, 16).toString(2).substr(0, 1);
+            var opcode = parseInt(byte_one, 16).toString(2).substr(4, 4);
+            result.opcode = opcode;
+
+            fin = (fin == 1) ? true : false;
+            result.fin = fin;
+
+            var dec_two = parseInt(byte_two, 16).toString(10);
+            payload_len = dec_two;
+            if (payload_len > 127) {
+                mask_flag = true;
+                payload_len = dec_two & 127;
+            }
+                
+            if (payload_len == 126) {
+                payload_len = parseInt(hex.substr(offset, 4), 16).toString(10);
+                offset += 4;
+                
+            } else if (payload_len == 127) {
+                payload_len = parseInt(hex.substr(offset, 16), 16).toString(10);
+                offset += 16;
+            }
+
+            result.payload_len = payload_len;
+            result.masked = mask_flag;
+
+            var message;
+            if (mask_flag) {
+                mask = hex.substr(offset, 8);
+                result.maskKey = mask;
+                offset += 8;
+                message = ''; //Apply masking key with hex.substr(offset, payload_len * 2)
+            }
+            message = new Buffer(hex.substr(offset, payload_len * 2), 'hex').toString('utf8');
+            result.message = message;
+            return result;
+        }
 
         function handleError(errID, errMsg) {
             var err = {"errList" : [], "success" : ""};
@@ -270,14 +371,15 @@ Server.prototype.start = function (app) {
         		    }
         		}
         		else if(networkLayer.protocol.toString()== '17'){
-                    packetData.protocol='UDP';
-                }
+                                packetData.protocol='UDP';
+                        }
         		else{
-        			packetData.protocol='Something Else';
+        			  packetData.protocol='Something Else';
         		}
 
         		packetData.length=decoded_packet.pcap_header.len;
                 // packetData.info='tv_sec : '+decoded_packet.pcap_header.tv_sec +' tv_usec : '+ decoded_packet.pcap_header.tv_usec + ' caplen : ' +decoded_packet.pcap_header.caplen;
+
 
         		packetData.info='sport : '+ transportLayer.sport + ' dport : '+ transportLayer.dport + ' length : ' + transportLayer.length + ' checksum : '+transportLayer.checksum;
                 self.logs.info('Transport Layer sport:  ' + transportLayer.sport);
@@ -383,7 +485,7 @@ Server.prototype.start = function (app) {
                 + ((networkLayer && transportLayer) ? (',<IP ヘッダー+TCPヘッダー (' + networkLayer + ')>') : '')
                 + (transportLayer ? (',<httpデータSocket・IO情報部 (' + transportLayer + ')>') : '')
                 + (applicationLayer ? (',<httpデータQR配信メッセジー部(' + 'test3' + ')>') : '')
-                + '\n';
+                + '\r\n';
 
             return str;
         }
