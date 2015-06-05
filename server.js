@@ -193,8 +193,12 @@ Server.prototype.start = function (app) {
                 // Decode the packets based on its done by [pcap] automatically.
                 var fpacket = pcap.decode(packet);
                 var packetData = gatherTableDisplayData(counter++, fpacket);
-            
-                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
+
+                // Track a tcp packet for its message.
+                // TODO: To be implemented yet.
+                tcp_tracker.track_packet(fpacket);
+
+                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP, packetData.protocol, packetData.length, packetData.info, packetData.message]);
 
                 var buf = new Buffer(packet.buf);
                 var cap_len = fpacket.pcap_header.caplen;
@@ -203,10 +207,6 @@ Server.prototype.start = function (app) {
 
                 // Emit an event 'packet' to the client.
                 socketIO.sockets.emit('packet');
-
-                // Track a tcp packet for its message.
-                // TODO: To be implemented yet.
-                tcp_tracker.track_packet(fpacket);
             });
 
             // Listen to a 'complete' event emitted by [pcap_session].
@@ -252,6 +252,7 @@ Server.prototype.start = function (app) {
             var packetData = new Packet();
 
             var networkLayer = decoded_packet.payload.payload;
+            var transportLayer = networkLayer.payload;
             packetData.counter = counter;
             packetData.timestamp = packetData.dateFormat(decoded_packet.pcap_header.tv_sec, decoded_packet.pcap_header.tv_usec);
             if (networkLayer) {
@@ -262,19 +263,21 @@ Server.prototype.start = function (app) {
         		self.logs.info('networkLayer:  ' + networkLayer);
                     	
         		if(networkLayer.protocol.toString()== '6'){
-        			packetData.protocol='TCP';
+        		    packetData.protocol = 'TCP';
+
+        		    if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 80) && transportLayer.data_bytes > 0) {
+        		        packetData.protocol = 'HTTP';
+        		    }
         		}
         		else if(networkLayer.protocol.toString()== '17'){
-                                packetData.protocol='UDP';
-                        }
+                    packetData.protocol='UDP';
+                }
         		else{
-        			  packetData.protocol='Something Else';
+        			packetData.protocol='Something Else';
         		}
 
         		packetData.length=decoded_packet.pcap_header.len;
                 // packetData.info='tv_sec : '+decoded_packet.pcap_header.tv_sec +' tv_usec : '+ decoded_packet.pcap_header.tv_usec + ' caplen : ' +decoded_packet.pcap_header.caplen;
-                var transportLayer = networkLayer.payload;
-
 
         		packetData.info='sport : '+ transportLayer.sport + ' dport : '+ transportLayer.dport + ' length : ' + transportLayer.length + ' checksum : '+transportLayer.checksum;
                 self.logs.info('Transport Layer sport:  ' + transportLayer.sport);
@@ -380,7 +383,7 @@ Server.prototype.start = function (app) {
                 + ((networkLayer && transportLayer) ? (',<IP ヘッダー+TCPヘッダー (' + networkLayer + ')>') : '')
                 + (transportLayer ? (',<httpデータSocket・IO情報部 (' + transportLayer + ')>') : '')
                 + (applicationLayer ? (',<httpデータQR配信メッセジー部(' + 'test3' + ')>') : '')
-                + '\r\n';
+                + '\n';
 
             return str;
         }
