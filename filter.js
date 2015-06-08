@@ -437,7 +437,7 @@ FilterValidation.prototype.compileFilter = function (str) {
                             }
                             else{
                                 if('protocol' == pairVar){
-                                    correctness = setError(result,'ERR100','Value must be a number.');
+                                    correctness = setError(result,'ERR100','Invalid protocol.');
                                 }
                                 else{ 
                                     correctness = setError(result,'ERR101','Msg Value must be enclosed in " ".');
@@ -515,16 +515,22 @@ FilterValidation.prototype.compileFilter = function (str) {
                 if ("~=" !== ope && ">" !== ope && "<=" !== ope && ">=" !== ope && "<" !== ope) {
                     logs.info("Protocol variable  if condition: "+variable);
                     if('protocol' == variable){
-                        return numRegex.test(value);
+                        switch(value){
+                            case 'TCP' :
+                            case 'UDP' :
+                            case 'HTTP' :
+                                result = true;
+                                break;
+                            default : 
+                                result = false;
+                        }
                     }
                     else{
                         return strRegex.test(value);
                     }
 
                 }else{
-
-                    logs.info("Protocol ope  else condition: "+ope);
-
+                    return result;
                 }
             }
             
@@ -704,13 +710,37 @@ FilterValidation.prototype.applyFilter = function (packets) {
             result = transportLayer && transportLayer.dport &&
                 compareValues(transportLayer.dport, operation, value);
         } else if ("http" === variable) {
-
+            if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 8082)) {
+                // if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 80) && transportLayer.data_bytes > 0) {
+                    logs.info('<<<<< HTTP PROTOCOL FOUND');
+                    return true;
+            }
         } else if ("msg" === variable) {
 
         } else if ("protocol" === variable) {
             logs.info("On compare protocol");
-            result = networkLayer && networkLayer.protocol &&
-                compareValues(networkLayer.protocol, operation, value);
+            var protocolNumber;
+                switch(value){
+                    case 'TCP':
+                        protocolNumber = '6';
+                        break;
+                    case 'UDP' :
+                        protocolNumber = '17'
+                        break;
+                    case 'HTTP' :
+                        if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 8082)) {
+                        // if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 80) && transportLayer.data_bytes > 0) {
+                            return true;
+                        }
+                        else{
+                            return false;
+                        }
+                        break;
+                    }
+                
+                logs.info("protocolNumber : "+protocolNumber);
+                result = networkLayer && networkLayer.protocol &&
+                    compareValues(networkLayer.protocol, operation, protocolNumber);   
         }
 
         return result;

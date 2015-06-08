@@ -37,311 +37,6 @@
 
 
     </style>
-
-    <script>
-
-        // //Variable used to verify if filter button is clicked.
-        // //Used to identify that there is a raw packet data.
-        var isPacketDataLoaded = false;
-        $(function () {
-            var columnOrder =['counter','srcIP','dstIP','timestamp','Protocol','message','info'];
-            console.log(columnOrder);
-            var fileSize = 0;
-            var columns = [{ "title": "No", "width": "3%", "orderable": "true" , "data" : "0"},
-                                { "title": "Timestamp", "width": "15%", "orderable": "true" ,"data" : "1" },
-                                { "title": "Source", "width": "10%", "type": "ip-address", "orderable": "true" ,"data" : "2"},
-                                { "title": "Destination", "width": "10%", "type": "ip-address", "orderable": "true" ,"data" : "3"},
-                                { "title": "Protocol", "width": "5%",  "orderable": "true" ,"data" : "4"},
-                                { "title": "Length", "width": "4%", "orderable": "true" ,"data" : "5"},
-                                { "title": "Information", "width": "33%", "orderable": "true" ,"data" : "6"},
-                                { "title": "Message", "width": "20%", "orderable": "true","data" : "7" }];
-            $('#tblPackets').dataTable({
-                "retrieve": true,
-                "ordering": true,
-                "dom": 'RrtS',
-                "Filter": false,
-                "Info": false,
-                "cellspacing": 0,
-                "AutoWidth": false,
-                "scrollY": "510px",
-                "processing": true,
-                "columns": columns,
-                "deferRender": true,
-                "paging": true,
-                "language": { "emptyTable": "No data found."},
-                "searching": false,
-                "stateSave": false,
-                "scrollCollapse": true,
-                "jQueryUI": true,
-                "fnRowCallback":  function( nRow, aData, iDisplayIndex, iDisplayIndexFull ) {
-                    if ( aData[4] == "TCP" )
-                    {
-                        $('td', nRow).css('background-color', '#add8e6');
-                    }
-                    else if (  aData[4] == "UDP" )
-                    {
-                        $('td', nRow).css('background-color', '#90ee90  ');
-                    }
-                    else if (  aData[4] == "Something else" )
-                    {
-                        $('td', nRow).css('background-color', '#90ee90  ');
-                    }
-                }
-            });
-
-            dataTable = $('#tblPackets').dataTable();
-
-            // dataTable.set('strings.emptyMessage', "Yas!");
-            $('#tblPackets tbody').on('click', 'tr', function () {
-                dataTable.$('tr.selected').removeClass('selected');
-                $(this).addClass('selected');
-                socket.emit('_getDecodedPacket', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index(), resolveError);
-            });
-
-
-            $("#progressbar").progressbar({
-                max : fileSize,
-                value: 0
-            });
-
-            // $('#txtFilter').keyup(function (e) {
-            //     console.log('test' + $('#txtFilter').attr('id'));
-            //     filter($('#txtFilter').attr('id'), this.value);
-            // });
-
-            $('#btnApplyFilter').click(function () {
-                var txtBox = $('#txtFilter');
-                // filterClick = true;
-                console.log(txtBox.val());
-                //Check if there was a file selected 
-                // if(0 < dataTable.fnGetData().length){
-                    if(isPacketDataLoaded){
-                        socket.emit('filter', txtBox.val(),resolveError);
-                    }
-                    else{
-                        $('#lblError').text('No file was loaded.');
-                    }
-
-                // }
-                // else{
-                //     $('#lblError').text('No data can be filtered.');
-                // }
-            });
-
-            $('#btnSave').click(function() {
-                
-            });
-
-            $('#btnLoad').click(function () {
-                var filename = '';
-                //Set filter click to false. To load and refresh raw packet data on the server side.
-                $("#cmbFilename option:selected").each(function () {
-                    filename += $(this).text() + "";
-                });
-                $('#cmbFilename').prop('disabled', true);
-                dataTable.api().clear().draw();
-                socket.emit('_start', filename, resolveError);
-            });
-
-            var filter = $.fn.dataTable.util.throttle(
-                function (id, filter) {
-                    socket.emit('validate', id, filter);
-                },
-                500
-            );
-
-            $('#cmbFilename').change(function () {
-            console.log("On cmbFilename");
-                 checkDataTable();
-            });
-        });
-        
-        function checkDataTable(){
-            console.log("checkDataTable");
-            if( 0 >= dataTable.fnSettings().aoData.length && isPacketDataLoaded==false){
-                                $('#btnSave').attr('disabled','disabled');
-                                $('#txtFilter').attr('disabled','disabled');
-                                $('#btnApplyFilter').attr('disabled','disabled');
-                                $('#txtFilter').text('');
-            }
-            else{
-                $('#btnSave').removeAttr('disabled');
-                $('#txtFilter').removeAttr('disabled');
-                $('#btnApplyFilter').removeAttr('disabled');
-            }
-        }
-        var counter = 0;
-        var list = [];
-        var socket = io.connect('http://192.168.1.245:8001/',{transports : ["websocket"]});
-        var dataTable;
-        var dateNow;
-
-        socket.on('connect', function () {
-            $('#incomingChatMessages').append($('<li>Connected</li>'));
-            socket.emit('_getFileList', resolveError);
-
-        });
-
-        socket.on('disconnect', function () {
-            $('#incomingChatMessages').append('<li>Disconnected</li>');
-            dataTable.api().clear().draw();
-            counter = 0;
-            console.log($('#tblPackets tr').length);
-            $('#lblError').text('Disconnected from Server');
-        });
-
-        socket.on('error', function(err) {
-
-        });
-
-        socket.on('_pcap-error', function(err) {
-            
-        });
-
-        socket.on('_displayDecodedPacket', function (decoded_packet) {
-            $('#lblAscii').html(decoded_packet.replace('\r\n', '<br>'));
-        });
-
-        socket.on('_showFileList', function (files) {
-        	console.log('here');
-            var fList = $('#cmbFilename');
-            fList.empty();
-            var fileIndex = 0;
-            $.each(files, function (index, fileName) {
-                fList.append(
-                    $('<option></option>').val(index).html(fileName)
-                );
-            });
-        });
-
-        //socket.on('filesize', function (size) {
-        //    fileSize = size;
-        //    $('#progressbar').progressbar('option', 'max', size);
-        //});
-
-        socket.on('packet', function (packetLength) {
-            counter++;
-            if (!dateNow) {
-                dateNow = Date.now();
-                dataTable.fnProcessingIndicator();
-            }
-            // progress();
-        });
-
-        socket.on('complete', function (data) {
-            console.log(((Date.now() - dateNow) / 1000) + " sec");
-            dataTable.api().rows.add(data).draw();
-            dataTable.fnProcessingIndicator(false);
-            dateNow = undefined;
-            // console.log("On Complete filterClick : " +filterClick);
-            // if(!filterClick){
-            // console.log("On complete");
-            if (0 < dataTable.fnSettings().aoData.length) {
-                isPacketDataLoaded = true;
-            };
-                checkDataTable();
-            // }
-
-        });
-
-        socket.on('validated', function (value) {
-            var filterBox = $('#txtFilter');
-            console.log('validated return '+ value);
-            if (value) {
-                if (filterBox.val().length > 0) {
-                    filterBox.css('background-color', '#BDEEBD');
-                } else {
-                    filterBox.css('background-color', '#FFFFFF');
-                }
-            } else {
-                filterBox.css('background-color', '#EEBDBD');
-            }
-        });
-
-        socket.on('filtered', function (filteredList) {
-            dataTable.api().clear().draw();
-            dataTable.api().rows.add(filteredList).draw();
-            dataTable.fnProcessingIndicator(false);
-        });
-
-
-        function resolveError(jsonErrorList) {            
-            $('#cmbFilename').removeAttr('disabled');
-            console.log('errorList: ' + jsonErrorList.errList);
-            console.log('success: ' + jsonErrorList.success);
-            //get jsonErrorList["errList"]
-            if (jsonErrorList["errList"].length == 0) {
-                if (jsonErrorList["success"].length == 0 ) {
-                    $('#lblError').text('');
-                } else { 
-                    //display jsonErrorList["success"];
-                    $('#lblError').text(jsonErrorList['success']);
-                }
-            } else {
-                //  set lblError to visible and set jsonErrorList["errList"] to lblError
-                //  with each error on a different line.
-                var eList = jsonErrorList['errList'];
-                $('#lblError').text('');
-                for (var error in eList) {
-                    $('#lblError').text(eList[error]['errID'] + ': ' + eList[error]['errMsg']);
-                }
-
-                //Check if there were no problems in loading the new file in the server.
-                switch(eList[0]['errID']){
-                    case 'ERR001':
-                    case 'ERR002':
-                        isPacketDataLoaded = false;
-                        socket.emit('_getFileList', resolveError);
-                        break;
-                    case 'ERR000':
-                         $('#cmbFilename').find('option').remove();
-                        break;
-                }
-
-                console.log("On resolveError");
-                checkDataTable();
-            }
-        }
-
-    	function showDialog() {
-            $("#dialog-modal").dialog(
-            {
-                width: 450,
-                height: 200,
-                modal: true
-             });
-        }
-
-        function hideOverlay() {
-             $("#dialog-modal").dialog( "close" );
-        }
-        function savePacket() {
-        	var filename = '';
-            filename = $('#txtSaveFile').val();
-
-            socket.emit('_saveFile', filename, $('#txtFilter').val(), resolveError);
-             $("#dialog-modal").dialog( "close" );
-        }
-
-
-        function cancelPacket() {
-             $("#dialog-modal").dialog( "close" );
-        }
-
-        $(function() {
-            $( "#tabs" ).tabs();
-        });
-
-        function applyFilter() {
-            $("#dialog-modal").dialog(
-            {
-                width: 450,
-                height: 200,
-                modal: true
-             });
-        }
-
-    </script>
 </head>
 <body style=" position: absolute; height: 680; width: 1200;font-family: sans-serif;">
 	<div style="border:1">
@@ -466,4 +161,336 @@
     </div>
  
 </body>
+    <script>
+
+        // //Variable used to verify if filter button is clicked.
+        // //Used to identify that there is a raw packet data.
+        var isPacketDataLoaded = false;
+        var reorder;
+        // var columnOrder;
+        $(function () {
+            var columnOrder =['counter','srcIP','dstIP','timestamp','Protocol','message','info'];
+            console.log(columnOrder);
+            var fileSize = 0;
+
+            var columns = [{ "title": "No", "width": "5%", "orderable": "true" },
+                                { "title": "Timestamp", "width": "15%", "orderable": "true" },
+                                { "title": "Source", "width": "10%", "type": "ip-address", "orderable": "true" },
+                                { "title": "Destination", "width": "10%", "type": "ip-address", "orderable": "true" },
+                                { "title": "Protocol", "width": "8%",  "orderable": "true" },
+                                { "title": "Length", "width": "7%", "orderable": "true" },
+                                { "title": "Information", "width": "25%", "orderable": "true" },
+                                { "title": "Message", "width": "20%", "orderable": "true" }];
+            $('#tblPackets').dataTable({
+                "retrieve": true,
+                "ordering": true,
+                "dom": 'rtS',
+                "Filter": false,
+                "Info": false,
+                "cellspacing": 0,
+                "AutoWidth": false,
+                "scrollY": "510px",
+                "processing": true,
+                "columns": columns,
+                "deferRender": true,
+                "paging": true,
+                "language": { "emptyTable": "No data found."},
+                "searching": false,
+                "stateSave": false,
+                "scrollCollapse": false,
+                "jQueryUI": true,
+                "fnRowCallback":  function( nRow, aData, iDisplayIndex, iDisplayIndexFull ) {
+                    if ( aData[4] == "TCP" )
+                    {
+                        $('td', nRow).css('background-color', '#add8e6');
+                    }
+                    else if (  aData[4] == "UDP" )
+                    {
+                        $('td', nRow).css('background-color', '#90ee90  ');
+                    }
+                    else if (  aData[4] == "HTTP" )
+                    {
+                        $('td', nRow).css('background-color', 'red');
+                    }
+                    else if (  aData[4] == "Something else" )
+                    {
+                        $('td', nRow).css('background-color', '#90ee90  ');
+                    }
+                }
+            });
+
+            dataTable = $('#tblPackets').dataTable();
+
+
+
+            reorder = new $.fn.dataTable.ColReorder(dataTable, {
+                fnReorderCallback: function () {
+                }
+            } );
+            // dataTable.set('strings.emptyMessage', "Yas!");
+            $('#tblPackets tbody').on('click', 'tr', function () {
+                dataTable.$('tr.selected').removeClass('selected');
+                $(this).addClass('selected');
+                socket.emit('_getDecodedPacket', $('#tabs').tabs('option', 'active'), dataTable.api().row('.selected').index(), resolveError);
+            });
+
+
+            $("#progressbar").progressbar({
+                max : fileSize,
+                value: 0
+            });
+
+            // $('#txtFilter').keyup(function (e) {
+            //     console.log('test' + $('#txtFilter').attr('id'));
+            //     filter($('#txtFilter').attr('id'), this.value);
+            // });
+
+            $('#btnApplyFilter').click(function () {
+                var txtBox = $('#txtFilter');
+                // filterClick = true;
+                console.log(txtBox.val());
+                //Check if there was a file selected 
+                // if(0 < dataTable.fnGetData().length){
+                    if(isPacketDataLoaded){
+                        socket.emit('filter', txtBox.val(),resolveError);
+                    }
+                    else{
+                        $('#lblError').text('No file was loaded.');
+                    }
+
+                // }
+                // else{
+                //     $('#lblError').text('No data can be filtered.');
+                // }
+            });
+
+            $('#btnSave').click(function() {
+                
+            });
+
+            $('#btnLoad').click(function () {
+                var filename = '';
+                //Set filter click to false. To load and refresh raw packet data on the server side.
+                $("#cmbFilename option:selected").each(function () {
+                    filename += $(this).text() + "";
+                });
+                $('#cmbFilename').prop('disabled', true);
+                dataTable.api().clear().draw();
+                socket.emit('_start', filename, resolveError);
+            });
+
+            var filter = $.fn.dataTable.util.throttle(
+                function (id, filter) {
+                    socket.emit('validate', id, filter);
+                },
+                500
+            );
+
+            $('#cmbFilename').change(function () {
+            console.log("On cmbFilename");
+                 checkDataTable();
+            });
+        });
+        
+        function checkDataTable(){
+            console.log("checkDataTable");
+            if( 0 >= dataTable.fnSettings().aoData.length && isPacketDataLoaded==false){
+                                $('#btnSave').attr('disabled','disabled');
+                                $('#txtFilter').attr('disabled','disabled');
+                                $('#btnApplyFilter').attr('disabled','disabled');
+                                $('#txtFilter').text('');
+            }
+            else{
+                $('#btnSave').removeAttr('disabled');
+                $('#txtFilter').removeAttr('disabled');
+                $('#btnApplyFilter').removeAttr('disabled');
+            }
+        }
+        var counter = 0;
+        var list = [];
+        var socket = io.connect('http://192.168.1.245:8001/',{transports : ["websocket"]});
+        var dataTable;
+        var dateNow;
+
+        socket.on('connect', function () {
+            $('#incomingChatMessages').append($('<li>Connected</li>'));
+            socket.emit('_getFileList', resolveError);
+
+        });
+
+        socket.on('disconnect', function () {
+            $('#incomingChatMessages').append('<li>Disconnected</li>');
+            dataTable.api().clear().draw();
+            counter = 0;
+            console.log($('#tblPackets tr').length);
+            $('#lblError').text('Disconnected from Server');
+        });
+
+        socket.on('error', function(err) {
+
+        });
+
+        socket.on('_pcap-error', function(err) {
+            
+        });
+
+        socket.on('_displayDecodedPacket', function (decoded_packet) {
+            $('#lblAscii').html(decoded_packet.replace('\r\n', '<br>'));
+        });
+
+        socket.on('_showFileList', function (files) {
+            console.log('here');
+            var fList = $('#cmbFilename');
+            fList.empty();
+            var fileIndex = 0;
+            $.each(files, function (index, fileName) {
+                fList.append(
+                    $('<option></option>').val(index).html(fileName)
+                );
+            });
+        });
+
+        //socket.on('filesize', function (size) {
+        //    fileSize = size;
+        //    $('#progressbar').progressbar('option', 'max', size);
+        //});
+
+        socket.on('packet', function (packetLength) {
+            counter++;
+            if (!dateNow) {
+                dateNow = Date.now();
+                dataTable.fnProcessingIndicator();
+            }
+            // progress();
+        });
+
+        socket.on('complete', function (data) {
+            console.log(((Date.now() - dateNow) / 1000) + " sec");
+
+            var columnOrder = reorder.fnOrder();
+            dataTable.api().colReorder.reset();
+            dataTable.api().rows.add(data).draw();
+            dataTable.fnProcessingIndicator(false);
+            dateNow = undefined;
+            // console.log("On Complete filterClick : " +filterClick);
+            // if(!filterClick){
+            // console.log("On complete");
+            reorder.fnOrder(columnOrder);
+            if (0 < dataTable.fnSettings().aoData.length) {
+                isPacketDataLoaded = true;
+            };
+                checkDataTable();
+            // }
+
+        });
+
+
+
+        socket.on('filtered', function (filteredList) {
+            var columnOrder = reorder.fnOrder();
+            dataTable.api().colReorder.reset();
+            dataTable.api().clear().draw();
+            dataTable.api().rows.add(filteredList).draw();
+            reorder.fnOrder(columnOrder);
+            dataTable.fnProcessingIndicator(false);
+            if (0 < dataTable.fnSettings().aoData.length) {
+                isPacketDataLoaded = true;
+            }
+            else{
+                isPacketDataLoaded = false;
+            }
+        });
+
+        socket.on('validated', function (value) {
+            var filterBox = $('#txtFilter');
+            console.log('validated return '+ value);
+            if (value) {
+                if (filterBox.val().length > 0) {
+                    filterBox.css('background-color', '#BDEEBD');
+                } else {
+                    filterBox.css('background-color', '#FFFFFF');
+                }
+            } else {
+                filterBox.css('background-color', '#EEBDBD');
+            }
+        });
+
+
+        function resolveError(jsonErrorList) {            
+            $('#cmbFilename').removeAttr('disabled');
+            console.log('errorList: ' + jsonErrorList.errList);
+            console.log('success: ' + jsonErrorList.success);
+            //get jsonErrorList["errList"]
+            if (jsonErrorList["errList"].length == 0) {
+                if (jsonErrorList["success"].length == 0 ) {
+                    $('#lblError').text('');
+                } else { 
+                    //display jsonErrorList["success"];
+                    $('#lblError').text(jsonErrorList['success']);
+                }
+            } else {
+                //  set lblError to visible and set jsonErrorList["errList"] to lblError
+                //  with each error on a different line.
+                var eList = jsonErrorList['errList'];
+                $('#lblError').text('');
+                for (var error in eList) {
+                    $('#lblError').text(eList[error]['errID'] + ': ' + eList[error]['errMsg']);
+                }
+
+                //Check if there were no problems in loading the new file in the server.
+                switch(eList[0]['errID']){
+                    case 'ERR001':
+                    case 'ERR002':
+                        isPacketDataLoaded = false;
+                        socket.emit('_getFileList', resolveError);
+                        break;
+                    case 'ERR000':
+                         $('#cmbFilename').find('option').remove();
+                        break;
+                }
+
+                console.log("On resolveError");
+                checkDataTable();
+            }
+        }
+
+        function showDialog() {
+            $("#dialog-modal").dialog(
+            {
+                width: 450,
+                height: 200,
+                modal: true
+             });
+        }
+
+        function hideOverlay() {
+             $("#dialog-modal").dialog( "close" );
+        }
+        function savePacket() {
+            var filename = '';
+            filename = $('#txtSaveFile').val();
+
+            socket.emit('_saveFile', filename, $('#txtFilter').val(), resolveError);
+             $("#dialog-modal").dialog( "close" );
+        }
+
+
+        function cancelPacket() {
+             $("#dialog-modal").dialog( "close" );
+        }
+
+        $(function() {
+            $( "#tabs" ).tabs();
+        });
+
+        function applyFilter() {
+            $("#dialog-modal").dialog(
+            {
+                width: 450,
+                height: 200,
+                modal: true
+             });
+        }
+
+    </script>
 </html>

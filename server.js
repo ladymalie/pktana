@@ -20,6 +20,11 @@ var PCAP_DIR = __dirname + '/../pcapDir/'
  */
 var CONFIG_PATH = __dirname + '/config/config.json';
 
+/**
+ * The path to the language config.json file.
+ */
+var LOCALE_CONFIG_PATH = __dirname + '/config/lang-en.json';
+
 /*
  * The function which serves as the constructor for the module.
  * @method Server
@@ -42,7 +47,7 @@ function Server(logger) {
  *
  */
 Server.prototype.start = function (app) {
-    var config;
+    var config, langConfig;
     var self = this;
     self.app = app;
 
@@ -52,6 +57,13 @@ Server.prototype.start = function (app) {
         self.logs.error('GWSV028 failed to read config file[' + CONFIG_PATH + ']. reason: ' + e.message);
         return;
     }
+
+    // try {
+    //     langConfig = JSON.parse(fs.readFileSync(LOCALE_CONFIG_PATH, 'utf8'));
+    // } catch (e) {
+    //     self.logs.error('GWSV028 failed to read config file[' + LOCALE_CONFIG_PATH + ']. reason: ' + e.message);
+    //     return;
+    // }
 
     // Start the http server with the express application as parameter.
     var server = node_http.createServer(app);
@@ -128,7 +140,7 @@ Server.prototype.start = function (app) {
                 sockets.emit('_showFileList', jsonFileList);
                 resolveError(handleError(undefined, undefined));
             } else {
-                resolveError(handleError('ERR000', 'No .pcap files found.'));
+                resolveError(handleError('ERR000', langConfig["ERR000"]));
             }
         });
 
@@ -152,19 +164,18 @@ Server.prototype.start = function (app) {
             var pcap_session;
             var tcp_tracker;
             counter = 0;
+            var pcap_file = PCAP_DIR + filename;
 
-            fs.stat(filename, function (err, stat) {
-                if (err) {
-                    resolveError(handleError('ERR002', 'File cannot be found.'));
-                    return;
-                }
-            });
-	    var pcap_file = PCAP_DIR + filename;
-            self.logs.info('PCAPFILE ' +pcap_file);		
+            self.logs.info('PCAPFILE ' + pcap_file);
             try {
+                fs.statSync(pcap_file);
                 pcap_session = pcap.createOfflineSession(pcap_file, 'ip');
             } catch (error) {
-                resolveError(handleError('ERR001', 'Failed to read .pcap file. Invalid pcap format.'));
+                if (error.code === 'ENOENT') {
+                    resolveError(handleError('ERR002', langConfig["ERR002"]));
+                } else {
+                    resolveError(handleError('ERR001', langConfig["ERR001"]));
+                }
                 return;
             }
 
@@ -182,18 +193,20 @@ Server.prototype.start = function (app) {
                 // Decode the packets based on its done by [pcap] automatically.
                 var fpacket = pcap.decode(packet);
                 var packetData = gatherTableDisplayData(counter++, fpacket);
-            
-                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP,packetData.protocol,packetData.length,packetData.info,packetData.message]);
 
-                // Emit an event 'packet' to the client.
-                socketIO.sockets.emit('packet');
-
-                rawPacketList.push(packet);
-                decodedPacketList.push(fpacket);
-            
                 // Track a tcp packet for its message.
                 // TODO: To be implemented yet.
                 tcp_tracker.track_packet(fpacket);
+
+                packetList.push([packetData.counter, packetData.timestamp, packetData.srcIP, packetData.dstIP, packetData.protocol, packetData.length, packetData.info, packetData.message]);
+
+                var buf = new Buffer(packet.buf);
+                var cap_len = fpacket.pcap_header.caplen;
+                rawPacketList.push({ "data": buf, "length": cap_len });
+                decodedPacketList.push(fpacket);
+
+                // Emit an event 'packet' to the client.
+                socketIO.sockets.emit('packet');
             });
 
             // Listen to a 'complete' event emitted by [pcap_session].
@@ -205,6 +218,17 @@ Server.prototype.start = function (app) {
                 // Emit a 'complete' event to the client.
                 self.logs.info('Packet load completed in: ' + (Date.now() - dateNow) + ' ms');
                 socketIO.sockets.emit('complete', packetList);
+            });
+
+            tcp_tracker.on('session', function (session) {
+
+                session.on('data recv', function (session, data) {
+                    console.log("SESSION RECV: " + data);
+                });
+
+                session.on('data send', function (session, data) {
+                    console.log("SESSION SEND: " + data);
+                });
             });
 
             resolveError(handleError(undefined, undefined));
@@ -233,6 +257,7 @@ Server.prototype.start = function (app) {
             var packetData = new Packet();
 
             var networkLayer = decoded_packet.payload.payload;
+            var transportLayer = networkLayer.payload;
             packetData.counter = counter;
             packetData.timestamp = packetData.dateFormat(decoded_packet.pcap_header.tv_sec, decoded_packet.pcap_header.tv_usec);
             if (networkLayer) {
@@ -243,23 +268,27 @@ Server.prototype.start = function (app) {
         		self.logs.info('networkLayer:  ' + networkLayer);
                     	
         		if(networkLayer.protocol.toString()== '6'){
-        			packetData.protocol='TCP';
+        		    packetData.protocol = 'TCP';
+                    self.logs.info("gatherTableDisplayData isthere transportLayer : "+transportLayer.toString());
+                    if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 8082)) {
+        		    // if (transportLayer && (transportLayer.sport === 80 || transportLayer.dport === 80 || transportLayer.dport === 8082) && transportLayer.data_bytes > 0) {
+                        self.logs.info('HTTP Protocol: FOund ');
+        		        packetData.protocol = 'HTTP';
+        		    }
         		}
         		else if(networkLayer.protocol.toString()== '17'){
-                                packetData.protocol='UDP';
-                        }
+                    packetData.protocol='UDP';
+                }
         		else{
-        			  packetData.protocol='Something Else';
+        			packetData.protocol='Something Else';
         		}
 
         		packetData.length=decoded_packet.pcap_header.len;
                 // packetData.info='tv_sec : '+decoded_packet.pcap_header.tv_sec +' tv_usec : '+ decoded_packet.pcap_header.tv_usec + ' caplen : ' +decoded_packet.pcap_header.caplen;
-                var transportLayer = networkLayer.payload;
-
 
         		packetData.info='sport : '+ transportLayer.sport + ' dport : '+ transportLayer.dport + ' length : ' + transportLayer.length + ' checksum : '+transportLayer.checksum;
-                self.logs.info('Transport Layer sport:  ' + transportLayer.sport);
-                self.logs.info('Transport Layer dport:  ' + transportLayer.dport);
+                // self.logs.info('Transport Layer sport:  ' + transportLayer.sport);
+                // self.logs.info('Transport Layer dport:  ' + transportLayer.dport);
                 // self.logs.info('Transport Layer data:  ' + transportLayer.data.toString());
 
 	       }
@@ -309,7 +338,7 @@ Server.prototype.start = function (app) {
 				resolveError(handleError('', ''));
                 socketIO.sockets.emit('filtered', packetList);
             }else{
-                resolveError(handleError(result['errCode'], result['errMessage']));
+                resolveError(handleError('ERR001', 'Invalid Syntax'));
     	    }
             
         });
@@ -366,7 +395,7 @@ Server.prototype.start = function (app) {
                 + ((networkLayer && transportLayer) ? (',<IP ヘッダー+TCPヘッダー (' + networkLayer + ')>') : '')
                 + (transportLayer ? (',<httpデータSocket・IO情報部 (' + transportLayer + ')>') : '')
                 + (applicationLayer ? (',<httpデータQR配信メッセジー部(' + 'test3' + ')>') : '')
-                + '\r\n';
+                + '\n';
 
             return str;
         }
@@ -381,19 +410,49 @@ Server.prototype.start = function (app) {
 
         socket.on('_getDecodedPacket', function (tabIndex, packetIndex, resolveError) {
             if (0 == tabIndex) {
-                hexaDecimalFormat(packetIndex);
+                hexaDecimalFormat(packetIndex, resolveError);
             } else {
-                readableFormat(packetIndex);
+                readableFormat(packetIndex, resolveError);
             }
-
-            resolveError(handleError(undefined, undefined));
         });
 
-        function hexaDecimalFormat(packetIndex) {
+        function hexaDecimalFormat(packetIndex, resolveError) {
             var currPacket = rawPacketList[packetIndex];
+            var packetData = currPacket["data"].toString('hex').slice(0, currPacket["length"] * 2);
+            var hexDataTable = [];
+            var row = "";
+            var ctr = 0;
+            var rowCount = 0;
+
+            for (var i = 0; i < packetData.length; i += 2) {
+                if (ctr == 16) {
+                    var str = "" + rowCount;
+                    rowCount += 10;
+                    var pad = "0000";
+                    var res = pad.substring(0, pad.length - str.length) + str;
+                    hexDataTable.push({ "rowNum": res, "rowData": row });
+                    row = '';
+                    ctr = 0;
+                } else if (ctr == 8) {
+                    row += '|';
+                }
+
+                row += packetData[i] + '' + packetData[i + 1] + ' ';
+                ctr++;
+
+                if (i + 2 == packetData.length) {
+                    var str = "" + rowCount++;
+                    var pad = "0000";
+                    var res = pad.substring(0, pad.length - str.length) + str;
+                    hexDataTable.push({ "rowNum": res, "rowData": row });
+                }
+
+            }
+            resolveError(handleError(undefined, undefined));
+            sockets.emit('_displayRawPacket', hexDataTable);
         }
 
-        function readableFormat(packetIndex) {
+        function readableFormat(packetIndex, resolveError) {
             var currPacket = filteredPacketList[packetIndex];
             var dataLinkLayer = currPacket.payload;
             var networkLayer = currPacket.payload.payload;
@@ -415,11 +474,12 @@ Server.prototype.start = function (app) {
             }
             if (transportLayer) {
                 if (transportLayer.sport && transportLayer.dport) {
-                    formattedString += 'Protocol: ['+ 'unknown' + '], ';
+                    formattedString += 'Protocol: [' + 'unknown' + '], ';
                     formattedString += 'src port: [' + transportLayer.sport + '], ';
                     formattedString += 'dst port: [' + transportLayer.dport + ']';
                 }
             }
+            resolveError(handleError(undefined, undefined));
             sockets.emit('_displayDecodedPacket', formattedString);
         }
 
